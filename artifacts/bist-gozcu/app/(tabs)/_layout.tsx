@@ -1,11 +1,16 @@
 import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Platform, View, StyleSheet } from "react-native";
+import { Platform, View, StyleSheet, Text } from "react-native";
 import { BlurView } from "expo-blur";
 import { useColors } from "@/hooks/useColors";
 import { useAlerts } from "@/contexts/AlertContext";
-import { Text } from "react-native";
+import {
+  IconBarChart,
+  IconStar,
+  IconBriefcase,
+  IconSearch,
+  IconBell,
+} from "@/components/TabIcon";
 
 function TabBadge({ count }: { count: number }) {
   const colors = useColors();
@@ -37,7 +42,7 @@ export default function TabLayout() {
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: colors.border,
           elevation: 0,
-          height: Platform.OS === "web" ? 84 : undefined,
+          height: Platform.OS === "web" ? 64 : undefined,
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -45,7 +50,11 @@ export default function TabLayout() {
           ) : (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
           ),
-        tabBarLabelStyle: { fontFamily: "Inter_500Medium", fontSize: 10, marginBottom: 2 },
+        tabBarLabelStyle: {
+          fontFamily: "Inter_500Medium",
+          fontSize: 10,
+          marginBottom: Platform.OS === "android" ? 4 : 2,
+        },
       }}
     >
       <Tabs.Screen
@@ -53,7 +62,7 @@ export default function TabLayout() {
         options={{
           title: "Piyasa",
           tabBarLabel: "Piyasa",
-          tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" size={size} color={color} />,
+          tabBarIcon: ({ color }) => <IconBarChart color={color} size={22} />,
         }}
       />
       <Tabs.Screen
@@ -61,7 +70,7 @@ export default function TabLayout() {
         options={{
           title: "Favoriler",
           tabBarLabel: "Favoriler",
-          tabBarIcon: ({ color, size }) => <Ionicons name="star" size={size} color={color} />,
+          tabBarIcon: ({ color, focused }) => <IconStar color={color} size={22} filled={focused} />,
         }}
       />
       <Tabs.Screen
@@ -69,7 +78,7 @@ export default function TabLayout() {
         options={{
           title: "Portföy",
           tabBarLabel: "Portföy",
-          tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
+          tabBarIcon: ({ color }) => <IconBriefcase color={color} size={22} />,
         }}
       />
       <Tabs.Screen
@@ -77,7 +86,7 @@ export default function TabLayout() {
         options={{
           title: "Ara",
           tabBarLabel: "Ara",
-          tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
+          tabBarIcon: ({ color }) => <IconSearch color={color} size={22} />,
         }}
       />
       <Tabs.Screen
@@ -85,9 +94,9 @@ export default function TabLayout() {
         options={{
           title: "Alarmlar",
           tabBarLabel: "Alarmlar",
-          tabBarIcon: ({ color, size, focused }) => (
+          tabBarIcon: ({ color }) => (
             <View>
-              <Ionicons name={focused ? "notifications" : "notifications-outline"} size={size} color={color} />
+              <IconBell color={color} size={22} />
               <TabBadge count={triggeredAlerts.length} />
             </View>
           ),
