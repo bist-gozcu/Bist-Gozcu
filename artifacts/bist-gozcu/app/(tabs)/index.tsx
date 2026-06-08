@@ -104,11 +104,10 @@ export default function MarketScreen() {
         <FlatList
           data={sorted}
           keyExtractor={(item) => item.symbol}
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <StockRow
               symbol={item.symbol}
               quote={quotes[item.symbol]}
-              rank={index + 1}
             />
           )}
           refreshControl={

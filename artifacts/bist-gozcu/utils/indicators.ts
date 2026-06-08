@@ -263,3 +263,146 @@ export function analyzeStock(
     currentPrice,
   };
 }
+
+export type CandleDirection = "bullish" | "bearish" | "neutral";
+
+export interface CandlePattern {
+  name: string;
+  direction: CandleDirection;
+  emoji: string;
+}
+
+export function detectCandlePatterns(
+  opens: number[],
+  highs: number[],
+  lows: number[],
+  closes: number[]
+): CandlePattern[] {
+  const n = closes.length;
+  if (n < 3) return [];
+
+  const patterns: CandlePattern[] = [];
+
+  const o = opens[n - 1], h = highs[n - 1], l = lows[n - 1], c = closes[n - 1];
+  const o2 = opens[n - 2], h2 = highs[n - 2], l2 = lows[n - 2], c2 = closes[n - 2];
+  const c3 = closes[n - 3];
+
+  const body = Math.abs(c - o);
+  const body2 = Math.abs(c2 - o2);
+  const range = h - l;
+  const range2 = h2 - l2;
+  const upperWick = h - Math.max(o, c);
+  const lowerWick = Math.min(o, c) - l;
+  const upperWick2 = h2 - Math.max(o2, c2);
+  const lowerWick2 = Math.min(o2, c2) - l2;
+  const isBull = c > o;
+  const isBull2 = c2 > o2;
+  const midBody2 = (o2 + c2) / 2;
+
+  if (range > 0) {
+    const bodyRatio = body / range;
+
+    if (bodyRatio < 0.1) {
+      patterns.push({ name: "Doji", direction: "neutral", emoji: "⚖️" });
+    }
+
+    if (isBull && lowerWick > body * 2 && upperWick < body * 0.5 && lowerWick > range * 0.5) {
+      patterns.push({ name: "Çekiç", direction: "bullish", emoji: "🔨" });
+    }
+
+    if (!isBull && lowerWick > body * 2 && upperWick < body * 0.5 && lowerWick > range * 0.5) {
+      patterns.push({ name: "Asılı Adam", direction: "bearish", emoji: "🪝" });
+    }
+
+    if (!isBull && upperWick > body * 2 && lowerWick < body * 0.5 && upperWick > range * 0.5) {
+      patterns.push({ name: "Kayan Yıldız", direction: "bearish", emoji: "💫" });
+    }
+
+    if (isBull && upperWick > body * 2 && lowerWick < body * 0.5 && upperWick > range * 0.5) {
+      patterns.push({ name: "Ters Çekiç", direction: "bullish", emoji: "🌟" });
+    }
+
+    if (isBull && bodyRatio > 0.7 && c >= h2 && o <= l2) {
+      patterns.push({ name: "Yutan Boğa", direction: "bullish", emoji: "🐂" });
+    } else if (isBull && !isBull2 && c > midBody2 && o < c2) {
+      patterns.push({ name: "Hamile Boğa", direction: "bullish", emoji: "📈" });
+    }
+
+    if (!isBull && bodyRatio > 0.7 && c <= l2 && o >= h2) {
+      patterns.push({ name: "Yutan Ayı", direction: "bearish", emoji: "🐻" });
+    } else if (!isBull && isBull2 && c < midBody2 && o > c2) {
+      patterns.push({ name: "Hamile Ayı", direction: "bearish", emoji: "📉" });
+    }
+
+    if (isBull2 && body2 > 0 && upperWick2 < body2 * 0.3) {
+      const o3 = opens[n - 3];
+      const isBear3 = c3 < o3;
+      if (isBear3 && isBull && c > midBody2) {
+        patterns.push({ name: "Sabah Yıldızı", direction: "bullish", emoji: "🌅" });
+      }
+    }
+
+    if (!isBull2 && body2 > 0 && lowerWick2 < body2 * 0.3) {
+      const o3 = opens[n - 3];
+      const isBull3 = c3 > o3;
+      if (isBull3 && !isBull && c < midBody2) {
+        patterns.push({ name: "Akşam Yıldızı", direction: "bearish", emoji: "🌆" });
+      }
+    }
+
+    if (Math.abs(c2 - o2) / (range2 || 1) > 0.6 && isBull2 && isBull && c > c2) {
+      patterns.push({ name: "İki Beyaz Mum", direction: "bullish", emoji: "🕯️" });
+    }
+    if (Math.abs(c2 - o2) / (range2 || 1) > 0.6 && !isBull2 && !isBull && c < c2) {
+      patterns.push({ name: "İki Kara Mum", direction: "bearish", emoji: "🕯️" });
+    }
+  }
+
+  return patterns;
+}
+
+export function getOverallCandleDirection(patterns: CandlePattern[]): CandleDirection {
+  if (patterns.length === 0) return "neutral";
+  const bull = patterns.filter((p) => p.direction === "bullish").length;
+  const bear = patterns.filter((p) => p.direction === "bearish").length;
+  if (bull > bear) return "bullish";
+  if (bear > bull) return "bearish";
+  return "neutral";
+}
+
+export function detectSingleCandle(
+  open: number,
+  high: number,
+  low: number,
+  close: number,
+  prevClose: number
+): CandlePattern | null {
+  const body = Math.abs(close - open);
+  const range = high - low;
+  if (range === 0) return null;
+  const bodyRatio = body / range;
+  const isBull = close >= open;
+  const upperWick = high - Math.max(open, close);
+  const lowerWick = Math.min(open, close) - low;
+
+  if (bodyRatio < 0.08) {
+    return { name: "Doji", direction: "neutral", emoji: "⚖️" };
+  }
+  if (lowerWick > body * 2 && upperWick < body * 0.5) {
+    return isBull
+      ? { name: "Çekiç", direction: "bullish", emoji: "🔨" }
+      : { name: "Asılı Adam", direction: "bearish", emoji: "🪝" };
+  }
+  if (upperWick > body * 2 && lowerWick < body * 0.5) {
+    return isBull
+      ? { name: "Ters Çekiç", direction: "bullish", emoji: "🌟" }
+      : { name: "Kayan Yıldız", direction: "bearish", emoji: "💫" };
+  }
+  if (bodyRatio > 0.65) {
+    const gapUp = open > prevClose * 1.001;
+    const gapDown = open < prevClose * 0.999;
+    if (isBull && gapUp) return { name: "Güçlü Boğa", direction: "bullish", emoji: "🐂" };
+    if (!isBull && gapDown) return { name: "Güçlü Ayı", direction: "bearish", emoji: "🐻" };
+  }
+  return null;
+}
