@@ -28,54 +28,48 @@ router.get("/bist/quotes", async (req, res) => {
   }
 });
 
+type YfInterval = "5m" | "15m" | "1h" | "1d" | "1wk" | "1mo";
+
+const RANGE_CONFIG: Record<string, { days: number; interval: YfInterval }> = {
+  "1d":  { days: 1,     interval: "5m"  },
+  "5d":  { days: 5,     interval: "1h"  },
+  "1mo": { days: 30,    interval: "1d"  },
+  "3mo": { days: 90,    interval: "1d"  },
+  "6mo": { days: 180,   interval: "1d"  },
+  "1y":  { days: 365,   interval: "1d"  },
+  "5y":  { days: 365*5, interval: "1wk" },
+};
+
 router.get("/bist/chart/:symbol", async (req, res) => {
   try {
     const { symbol } = req.params;
-    const { range = "3mo" } = req.query;
-    const validRange = ["1mo", "3mo", "6mo", "1y"].includes(range as string)
-      ? (range as string)
-      : "3mo";
-    const msMap: Record<string, number> = {
-      "1mo": 30 * 86400000,
-      "3mo": 90 * 86400000,
-      "6mo": 180 * 86400000,
-      "1y": 365 * 86400000,
-    };
-    const period1 = new Date(Date.now() - (msMap[validRange] ?? msMap["3mo"]));
+    const range = (req.query.range as string) || "3mo";
+    const cfg = RANGE_CONFIG[range] ?? RANGE_CONFIG["3mo"];
+    const period1 = new Date(Date.now() - cfg.days * 86400000);
 
     const result = await yf.chart(`${symbol.toUpperCase()}.IS`, {
       period1,
-      interval: "1d",
+      interval: cfg.interval,
     });
 
     const quotes = result.quotes ?? [];
     const timestamps = quotes.map((q) =>
       Math.floor(new Date(q.date).getTime() / 1000)
     );
-    const closes = quotes.map((q) => q.close ?? 0);
-    const opens = quotes.map((q) => q.open ?? 0);
-    const highs = quotes.map((q) => q.high ?? 0);
-    const lows = quotes.map((q) => q.low ?? 0);
+    const closes  = quotes.map((q) => q.close  ?? 0);
+    const opens   = quotes.map((q) => q.open   ?? 0);
+    const highs   = quotes.map((q) => q.high   ?? 0);
+    const lows    = quotes.map((q) => q.low    ?? 0);
     const volumes = quotes.map((q) => q.volume ?? 0);
 
     res.json({
       chart: {
-        result: [
-          {
-            timestamp: timestamps,
-            indicators: {
-              quote: [
-                {
-                  close: closes,
-                  open: opens,
-                  high: highs,
-                  low: lows,
-                  volume: volumes,
-                },
-              ],
-            },
+        result: [{
+          timestamp: timestamps,
+          indicators: {
+            quote: [{ close: closes, open: opens, high: highs, low: lows, volume: volumes }],
           },
-        ],
+        }],
         error: null,
       },
     });

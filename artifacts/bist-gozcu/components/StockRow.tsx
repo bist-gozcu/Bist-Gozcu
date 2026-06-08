@@ -6,14 +6,13 @@ import {
   View,
   Platform,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { StockQuote } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { getStockMeta } from "@/constants/bistStocks";
-import { detectSingleCandle, CandleDirection } from "@/utils/indicators";
 
 interface StockRowProps {
   symbol: string;
@@ -43,22 +42,6 @@ export default function StockRow({
     change > 0 ? colors.up :
     change < 0 ? colors.down :
     colors.neutral;
-
-  const candlePattern = quote
-    ? detectSingleCandle(
-        quote.regularMarketOpen,
-        quote.regularMarketDayHigh,
-        quote.regularMarketDayLow,
-        quote.regularMarketPrice,
-        quote.regularMarketPreviousClose
-      )
-    : null;
-
-  const candleDirectionColor = (dir: CandleDirection) => {
-    if (dir === "bullish") return colors.up;
-    if (dir === "bearish") return colors.down;
-    return colors.neutral;
-  };
 
   const handlePress = () => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
@@ -91,16 +74,7 @@ export default function StockRow({
       onPress={handlePress}
     >
       <View style={styles.info}>
-        <View style={styles.symbolRow}>
-          <Text style={[styles.symbol, { color: colors.foreground }]}>{symbol}</Text>
-          {candlePattern && (
-            <View style={[styles.candlePill, { backgroundColor: `${candleDirectionColor(candlePattern.direction)}22`, borderColor: `${candleDirectionColor(candlePattern.direction)}55` }]}>
-              <Text style={[styles.candleText, { color: candleDirectionColor(candlePattern.direction) }]}>
-                {candlePattern.emoji} {candlePattern.name}
-              </Text>
-            </View>
-          )}
-        </View>
+        <Text style={[styles.symbol, { color: colors.foreground }]}>{symbol}</Text>
         <Text style={[styles.name, { color: colors.mutedForeground }]} numberOfLines={1}>
           {meta?.name ?? symbol}
         </Text>
@@ -122,8 +96,8 @@ export default function StockRow({
       </View>
       {showFavoriteBtn && (
         <Pressable onPress={handleFav} hitSlop={8} style={styles.starBtn}>
-          <Feather
-            name="star"
+          <Ionicons
+            name={fav ? "star" : "star-outline"}
             size={18}
             color={fav ? colors.neutral : colors.mutedForeground}
           />
@@ -138,20 +112,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   info: { flex: 1, marginRight: 8 },
-  symbolRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   symbol: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  candlePill: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    borderWidth: 0.5,
-  },
-  candleText: { fontSize: 10, fontFamily: "Inter_500Medium" },
-  name: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  name: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
   volBox: { marginRight: 12 },
   vol: { fontSize: 11, fontFamily: "Inter_400Regular" },
   priceBox: { alignItems: "flex-end", minWidth: 80 },

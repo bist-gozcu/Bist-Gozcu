@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Platform, View, StyleSheet } from "react-native";
 import { BlurView } from "expo-blur";
@@ -53,7 +53,7 @@ export default function TabLayout() {
         options={{
           title: "Piyasa",
           tabBarLabel: "Piyasa",
-          tabBarIcon: ({ color }) => <Feather name="bar-chart-2" size={22} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -61,7 +61,7 @@ export default function TabLayout() {
         options={{
           title: "Favoriler",
           tabBarLabel: "Favoriler",
-          tabBarIcon: ({ color }) => <Feather name="star" size={22} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="star" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -69,7 +69,7 @@ export default function TabLayout() {
         options={{
           title: "Portföy",
           tabBarLabel: "Portföy",
-          tabBarIcon: ({ color }) => <Feather name="briefcase" size={22} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -77,7 +77,7 @@ export default function TabLayout() {
         options={{
           title: "Ara",
           tabBarLabel: "Ara",
-          tabBarIcon: ({ color }) => <Feather name="search" size={22} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -85,9 +85,9 @@ export default function TabLayout() {
         options={{
           title: "Alarmlar",
           tabBarLabel: "Alarmlar",
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color, size, focused }) => (
             <View>
-              <Feather name="bell" size={22} color={color} />
+              <Ionicons name={focused ? "notifications" : "notifications-outline"} size={size} color={color} />
               <TabBadge count={triggeredAlerts.length} />
             </View>
           ),
