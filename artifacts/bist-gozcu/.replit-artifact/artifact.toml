@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "BIST Gözcü"
+version = "1.0.0"
+id = "artifacts/bist-gozcu"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 18598
+
+[services.development]
+run = "pnpm --filter @workspace/bist-gozcu run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bist-gozcu", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/bist-gozcu", "run", "serve" ]
+
+[services.env]
+PORT = "18598"
+BASE_PATH = "/"
