@@ -1,11 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -15,6 +19,7 @@ import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useAlerts } from "@/contexts/AlertContext";
+import { usePortfolio } from "@/contexts/PortfolioContext";
 import { fetchChartData, ChartResult, ChartRange, getMarketSession } from "@/utils/yahooFinance";
 import {
   analyzeStock,
@@ -39,6 +44,7 @@ import {
   IconClose,
   IconMinus,
   IconNotifications,
+  IconX,
 } from "@/components/TabIcon";
 
 const RANGES: { key: ChartRange; label: string }[] = [
@@ -95,11 +101,17 @@ export default function StockDetailScreen() {
   const { quotes } = useStocks();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites();
   const { alerts } = useAlerts();
+  const { addEntry, getEntry, updateEntry } = usePortfolio();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [candlePatterns, setCandlePatterns] = useState<CandlePattern[]>([]);
   const [loadingChart, setLoadingChart] = useState(true);
   const [range, setRange] = useState<ChartRange>("3mo");
+  const [showPortfolioModal, setShowPortfolioModal] = useState(false);
+  const [qty, setQty] = useState("");
+  const [avgCostStr, setAvgCostStr] = useState("");
+  const [note, setNote] = useState("");
+  const qtyRef = useRef<TextInput>(null);
 
   const quote = quotes[symbol ?? ""];
   const meta = getStockMeta(symbol ?? "");
@@ -132,6 +144,34 @@ export default function StockDetailScreen() {
   const handleRangeChange = (r: ChartRange) => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
     setRange(r);
+  };
+
+  const existingEntry = getEntry(symbol ?? "");
+
+  const handleOpenPortfolioModal = () => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const prefill = existingEntry
+      ? { q: existingEntry.quantity.toString(), avg: existingEntry.avgPrice.toString(), n: existingEntry.note }
+      : { q: "", avg: price != null ? price.toFixed(2) : "", n: "" };
+    setQty(prefill.q);
+    setAvgCostStr(prefill.avg);
+    setNote(prefill.n);
+    setShowPortfolioModal(true);
+    setTimeout(() => qtyRef.current?.focus(), 300);
+  };
+
+  const handleSavePortfolio = () => {
+    const sym = symbol?.toUpperCase().trim() ?? "";
+    const q = parseFloat(qty);
+    const a = parseFloat(avgCostStr);
+    if (!sym || isNaN(q) || q <= 0 || isNaN(a) || a <= 0) {
+      Alert.alert("Hata", "Geçerli bir adet ve ortalama maliyet girin.");
+      return;
+    }
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (existingEntry) updateEntry(existingEntry.id, q, a, note);
+    else addEntry(sym, q, a, note);
+    setShowPortfolioModal(false);
   };
 
   const price = quote?.regularMarketPrice;
@@ -209,7 +249,7 @@ export default function StockDetailScreen() {
     latestMfi < 20 ? colors.up : latestMfi > 80 ? colors.down : colors.neutral;
 
   return (
-    <>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <Stack.Screen
         options={{
           title: symbol ?? "",
@@ -225,8 +265,8 @@ export default function StockDetailScreen() {
         }}
       />
       <ScrollView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Price Hero */}
@@ -525,7 +565,130 @@ export default function StockDetailScreen() {
           </View>
         )}
       </ScrollView>
-    </>
+
+      {/* ── Bottom action bar ── */}
+      <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom + 10 }]}>
+        {existingEntry && (
+          <View style={[styles.portfolioChip, { backgroundColor: `${colors.up}18`, borderColor: `${colors.up}40` }]}>
+            <Text style={[styles.portfolioChipText, { color: colors.up }]}>
+              Portföyde: {existingEntry.quantity} adet · ₺{existingEntry.avgPrice.toFixed(2)} ort.
+            </Text>
+          </View>
+        )}
+        <Pressable
+          style={[styles.addBtn, { backgroundColor: existingEntry ? colors.secondary : colors.primary }]}
+          onPress={handleOpenPortfolioModal}
+        >
+          <Text style={[styles.addBtnText, { color: existingEntry ? colors.foreground : "#fff" }]}>
+            {existingEntry ? "Pozisyonu Güncelle" : "Portföye Ekle"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* ── Portfolio Modal ── */}
+      <Modal
+        visible={showPortfolioModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPortfolioModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+            <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
+              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+
+              {/* Modal header */}
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                    {existingEntry ? "Pozisyonu Güncelle" : "Portföye Ekle"}
+                  </Text>
+                  <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>{symbol}</Text>
+                </View>
+                <Pressable onPress={() => setShowPortfolioModal(false)} hitSlop={12}
+                  style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
+                  <IconX color={colors.mutedForeground} size={15} />
+                </Pressable>
+              </View>
+
+              {/* Current price pill */}
+              {price != null && (
+                <View style={[styles.priceInfoPill, { backgroundColor: colors.secondary }]}>
+                  <Text style={[styles.priceInfoText, { color: colors.mutedForeground }]}>Anlık fiyat: </Text>
+                  <Text style={[styles.priceInfoVal, { color: changeColor }]}>₺{price.toFixed(2)}</Text>
+                  {change != null && (
+                    <Text style={[styles.priceInfoChange, { color: changeColor }]}>
+                      {" "}({change >= 0 ? "+" : ""}{change.toFixed(2)}%)
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Adet */}
+              <View style={styles.field}>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Adet</Text>
+                <TextInput
+                  ref={qtyRef}
+                  style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
+                  value={qty}
+                  onChangeText={setQty}
+                  keyboardType="numeric"
+                  placeholder="Kaç lot?"
+                  placeholderTextColor={colors.mutedForeground}
+                  returnKeyType="next"
+                />
+              </View>
+
+              {/* Ortalama maliyet */}
+              <View style={styles.field}>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Ortalama Maliyet (₺)</Text>
+                <TextInput
+                  style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
+                  value={avgCostStr}
+                  onChangeText={setAvgCostStr}
+                  keyboardType="decimal-pad"
+                  placeholder={price != null ? `${price.toFixed(2)}` : "0.00"}
+                  placeholderTextColor={colors.mutedForeground}
+                  returnKeyType="done"
+                />
+              </View>
+
+              {/* Toplam maliyet önizleme */}
+              {qty !== "" && avgCostStr !== "" && !isNaN(parseFloat(qty)) && !isNaN(parseFloat(avgCostStr)) && (
+                <View style={[styles.totalRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                  <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>Toplam Maliyet</Text>
+                  <Text style={[styles.totalVal, { color: colors.foreground }]}>
+                    ₺{(parseFloat(qty) * parseFloat(avgCostStr)).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              )}
+
+              {/* Not */}
+              <View style={styles.field}>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Not (isteğe bağlı)</Text>
+                <TextInput
+                  style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Alış gerekçesi..."
+                  placeholderTextColor={colors.mutedForeground}
+                  returnKeyType="done"
+                />
+              </View>
+
+              <Pressable
+                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSavePortfolio}
+              >
+                <Text style={styles.saveBtnText}>
+                  {existingEntry ? "Güncelle" : "Portföye Ekle"}
+                </Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -633,4 +796,76 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   alertChipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  root: { flex: 1 },
+  bottomBar: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  portfolioChip: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  portfolioChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  addBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  addBtnText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  modalSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    gap: 12,
+  },
+  modalHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 4 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  modalSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  modalCloseBtn: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  priceInfoPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  priceInfoText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  priceInfoVal: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  priceInfoChange: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  field: { gap: 6 },
+  fieldLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  fieldInput: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 12 : 10,
+    borderWidth: 1,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+  },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  totalLabel: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  totalVal: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  saveBtn: { borderRadius: 14, paddingVertical: 14, alignItems: "center", marginTop: 4 },
+  saveBtnText: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff" },
 });
