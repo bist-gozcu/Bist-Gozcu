@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   FlatList,
   Platform,
@@ -7,41 +7,62 @@ import {
   StyleSheet,
   Text,
   View,
-  Animated,
-  PanResponder,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
+import Svg, { Line, Circle, Path } from "react-native-svg";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import StockRow from "@/components/StockRow";
 import EmptyState from "@/components/EmptyState";
 
+function IconMinusCircle({ color, size = 20 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" />
+      <Line x1="8" y1="12" x2="16" y2="12" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function IconGripLines({ color, size = 18 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1="4" y1="8" x2="20" y2="8" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="4" y1="12" x2="20" y2="12" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="4" y1="16" x2="20" y2="16" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export default function FavoritesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { quotes, loading, refresh } = useStocks();
-  const { favorites, removeFavorite, reorder } = useFavorites();
+  const { favorites, removeFavorite } = useFavorites();
   const [editMode, setEditMode] = useState(false);
-  const dragIndex = useRef<number | null>(null);
-  const dragY = useRef(new Animated.Value(0)).current;
 
   const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
 
-  const handleLongPress = (index: number) => {
-    if (!editMode) setEditMode(true);
-  };
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }, topPaddingStyle]}>
+      {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
-          Favoriler
-        </Text>
+        <View style={styles.headerLeft}>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Favoriler</Text>
+          {favorites.length > 0 && (
+            <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
+              <Text style={[styles.countText, { color: colors.mutedForeground }]}>{favorites.length}</Text>
+            </View>
+          )}
+        </View>
         {favorites.length > 0 && (
-          <Pressable onPress={() => setEditMode((v) => !v)} hitSlop={8}>
-            <Text style={[styles.editBtn, { color: editMode ? colors.primary : colors.mutedForeground }]}>
+          <Pressable
+            onPress={() => setEditMode((v) => !v)}
+            hitSlop={10}
+            style={[styles.editBtn, { backgroundColor: editMode ? `${colors.primary}20` : colors.secondary }]}
+          >
+            <Text style={[styles.editBtnText, { color: editMode ? colors.primary : colors.mutedForeground }]}>
               {editMode ? "Tamam" : "Düzenle"}
             </Text>
           </Pressable>
@@ -58,7 +79,7 @@ export default function FavoritesScreen() {
         <FlatList
           data={favorites}
           keyExtractor={(item) => item}
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <View style={styles.rowWrap}>
               {editMode && (
                 <Pressable
@@ -66,19 +87,19 @@ export default function FavoritesScreen() {
                   hitSlop={8}
                   style={styles.deleteBtn}
                 >
-                  <Feather name="minus-circle" size={20} color={colors.down} />
+                  <IconMinusCircle color={colors.down} size={22} />
                 </Pressable>
               )}
               <View style={styles.rowFlex}>
                 <StockRow
                   symbol={item}
                   quote={quotes[item]}
-                  showFavoriteBtn={false}
+                  showFavoriteBtn={!editMode}
                 />
               </View>
               {editMode && (
                 <View style={styles.dragHandle}>
-                  <Feather name="menu" size={18} color={colors.mutedForeground} />
+                  <IconGripLines color={colors.mutedForeground} size={18} />
                 </View>
               )}
             </View>
@@ -105,13 +126,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
-  editBtn: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerTitle: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  countBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  countText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  editBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  editBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   rowWrap: { flexDirection: "row", alignItems: "center" },
   rowFlex: { flex: 1 },
-  deleteBtn: { paddingLeft: 12 },
-  dragHandle: { paddingRight: 12 },
+  deleteBtn: { paddingLeft: 14, paddingRight: 4 },
+  dragHandle: { paddingHorizontal: 12 },
 });

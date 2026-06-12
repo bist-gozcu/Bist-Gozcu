@@ -16,7 +16,7 @@ import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { ALL_BIST_STOCKS, StockMeta } from "@/constants/bistStocks";
 import StockRow from "@/components/StockRow";
-import { IconSearch } from "@/components/TabIcon";
+import { IconSearch, IconX } from "@/components/TabIcon";
 
 const SECTORS = Array.from(new Set(ALL_BIST_STOCKS.map((s) => s.sector))).sort();
 
@@ -70,11 +70,18 @@ export default function SearchScreen() {
     />
   ), [quotes, handleAddToWatchlist]);
 
+  const hasFilter = query.length > 0 || selectedSector != null;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
+      <View style={[styles.pageHeader, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.pageTitle, { color: colors.foreground }]}>Ara</Text>
+      </View>
+
       {/* Search Bar */}
-      <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <IconSearch color={colors.mutedForeground} size={18} />
+      <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: query.length > 0 ? colors.primary : colors.border }]}>
+        <IconSearch color={colors.mutedForeground} size={17} />
         <TextInput
           style={[styles.input, { color: colors.foreground }]}
           value={query}
@@ -86,9 +93,9 @@ export default function SearchScreen() {
           returnKeyType="search"
           onSubmitEditing={Keyboard.dismiss}
         />
-        {(query.length > 0 || selectedSector != null) && (
-          <Pressable onPress={clearSearch} hitSlop={8}>
-            <Text style={[styles.clearX, { color: colors.mutedForeground }]}>✕</Text>
+        {hasFilter && (
+          <Pressable onPress={clearSearch} hitSlop={8} style={[styles.clearBtn, { backgroundColor: colors.secondary }]}>
+            <IconX color={colors.mutedForeground} size={13} />
           </Pressable>
         )}
       </View>
@@ -96,7 +103,7 @@ export default function SearchScreen() {
       {/* Toast */}
       {addedMsg && (
         <View style={[styles.toast, { backgroundColor: colors.up }]}>
-          <Text style={styles.toastText}>{addedMsg}</Text>
+          <Text style={styles.toastText}>✓ {addedMsg}</Text>
         </View>
       )}
 
@@ -108,33 +115,39 @@ export default function SearchScreen() {
         keyExtractor={(s) => s}
         style={[styles.sectorRow, { borderBottomColor: colors.border }]}
         contentContainerStyle={{ paddingHorizontal: 12, gap: 6, paddingVertical: 8 }}
-        renderItem={({ item }) => (
-          <Pressable
-            style={[
-              styles.sectorChip,
-              {
-                backgroundColor: selectedSector === item ? colors.primary : colors.card,
-                borderColor: selectedSector === item ? colors.primary : colors.border,
-              },
-            ]}
-            onPress={() => handleSector(item)}
-          >
-            <Text style={[
-              styles.sectorText,
-              { color: selectedSector === item ? "#fff" : colors.mutedForeground },
-            ]}>
-              {item}
-            </Text>
-          </Pressable>
-        )}
+        renderItem={({ item }) => {
+          const active = selectedSector === item;
+          return (
+            <Pressable
+              style={[
+                styles.sectorChip,
+                {
+                  backgroundColor: active ? colors.primary : colors.card,
+                  borderColor: active ? colors.primary : colors.border,
+                },
+              ]}
+              onPress={() => handleSector(item)}
+            >
+              <Text style={[styles.sectorText, { color: active ? "#fff" : colors.mutedForeground }]}>
+                {item}
+              </Text>
+            </Pressable>
+          );
+        }}
       />
 
-      {/* Count bar */}
-      <View style={[styles.countBar, { borderBottomColor: colors.border }]}>
+      {/* Count + clear */}
+      <View style={[styles.countBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
         <Text style={[styles.countText, { color: colors.mutedForeground }]}>
-          {results.length} hisse{selectedSector ? ` · ${selectedSector}` : ""}
+          {results.length} hisse
+          {selectedSector ? ` · ${selectedSector}` : ""}
           {query.length > 0 ? ` · "${query}"` : ""}
         </Text>
+        {hasFilter && (
+          <Pressable onPress={clearSearch} hitSlop={8}>
+            <Text style={[styles.clearAllText, { color: colors.primary }]}>Temizle</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Results */}
@@ -162,40 +175,53 @@ export default function SearchScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  pageHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  pageTitle: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    margin: 12,
-    borderRadius: 10,
+    marginHorizontal: 12,
+    marginTop: 12,
+    marginBottom: 6,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: Platform.OS === "ios" ? 10 : 7,
+    paddingVertical: Platform.OS === "ios" ? 10 : 8,
     borderWidth: 1,
     gap: 8,
   },
   input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular", paddingVertical: 0 },
-  clearX: { fontSize: 14, paddingHorizontal: 2 },
+  clearBtn: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   toast: {
     marginHorizontal: 12,
     marginBottom: 6,
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 10,
     alignItems: "center",
   },
-  toastText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  toastText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 },
   sectorRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0 },
   sectorChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
     borderWidth: 1,
   },
-  sectorText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  sectorText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   countBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   countText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  clearAllText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   empty: { alignItems: "center", marginTop: 60, gap: 6 },
   emptyTitle: { fontSize: 16, fontFamily: "Inter_500Medium" },
   emptySub: { fontSize: 13, fontFamily: "Inter_400Regular" },

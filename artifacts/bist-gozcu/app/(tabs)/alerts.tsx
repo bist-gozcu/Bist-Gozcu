@@ -12,12 +12,22 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useAlerts, AlertType, PriceAlert } from "@/contexts/AlertContext";
 import { useStocks } from "@/contexts/StockContext";
 import EmptyState from "@/components/EmptyState";
+import {
+  IconX,
+  IconPlus,
+  IconTrash,
+  IconArrowUp,
+  IconArrowDown,
+  IconTrendingUp,
+  IconTrendingDown,
+  IconAlertTriangle,
+  IconNotifications,
+} from "@/components/TabIcon";
 
 const ALERT_LABELS: Record<AlertType, string> = {
   above: "Fiyat Üstünde",
@@ -26,12 +36,14 @@ const ALERT_LABELS: Record<AlertType, string> = {
   sl: "Zarar Kes",
 };
 
-const ALERT_ICONS: Record<AlertType, keyof typeof Feather.glyphMap> = {
-  above: "arrow-up",
-  below: "arrow-down",
-  tp: "trending-up",
-  sl: "trending-down",
-};
+type AlertIconKey = AlertType;
+
+function AlertIcon({ type, color, size = 14 }: { type: AlertIconKey; color: string; size?: number }) {
+  if (type === "above") return <IconArrowUp color={color} size={size} />;
+  if (type === "below") return <IconArrowDown color={color} size={size} />;
+  if (type === "tp") return <IconTrendingUp color={color} size={size} />;
+  return <IconTrendingDown color={color} size={size} />;
+}
 
 function AddAlertModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const colors = useColors();
@@ -51,7 +63,7 @@ function AddAlertModal({ visible, onClose }: { visible: boolean; onClose: () => 
       Alert.alert("Hata", "Sembol ve hedef fiyat zorunludur.");
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addAlert(sym, t, alertType, note);
     setSymbol(""); setTarget(""); setNote(""); setAlertType("above");
     onClose();
@@ -60,12 +72,13 @@ function AddAlertModal({ visible, onClose }: { visible: boolean; onClose: () => 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
           <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
             <View style={styles.sheetHeader}>
               <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Alarm Ekle</Text>
-              <Pressable onPress={onClose} hitSlop={8}>
-                <Feather name="x" size={20} color={colors.mutedForeground} />
+              <Pressable onPress={onClose} hitSlop={10} style={[styles.closeBtn, { backgroundColor: colors.secondary }]}>
+                <IconX color={colors.mutedForeground} size={16} />
               </Pressable>
             </View>
 
@@ -84,28 +97,28 @@ function AddAlertModal({ visible, onClose }: { visible: boolean; onClose: () => 
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.mutedForeground }]}>Alarm Türü</Text>
               <View style={styles.typeRow}>
-                {alertTypes.map((t) => (
-                  <Pressable
-                    key={t}
-                    style={[
-                      styles.typeBtn,
-                      {
-                        backgroundColor: alertType === t ? colors.primary : colors.input,
-                        borderColor: alertType === t ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => setAlertType(t)}
-                  >
-                    <Feather
-                      name={ALERT_ICONS[t]}
-                      size={12}
-                      color={alertType === t ? "#fff" : colors.mutedForeground}
-                    />
-                    <Text style={[styles.typeBtnText, { color: alertType === t ? "#fff" : colors.mutedForeground }]}>
-                      {ALERT_LABELS[t]}
-                    </Text>
-                  </Pressable>
-                ))}
+                {alertTypes.map((t) => {
+                  const active = alertType === t;
+                  const typeColor = (t === "tp" || t === "above") ? colors.up : colors.down;
+                  return (
+                    <Pressable
+                      key={t}
+                      style={[
+                        styles.typeBtn,
+                        {
+                          backgroundColor: active ? `${typeColor}20` : colors.input,
+                          borderColor: active ? typeColor : colors.border,
+                        },
+                      ]}
+                      onPress={() => setAlertType(t)}
+                    >
+                      <AlertIcon type={t} color={active ? typeColor : colors.mutedForeground} size={13} />
+                      <Text style={[styles.typeBtnText, { color: active ? typeColor : colors.mutedForeground }]}>
+                        {ALERT_LABELS[t]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
@@ -132,7 +145,10 @@ function AddAlertModal({ visible, onClose }: { visible: boolean; onClose: () => 
               />
             </View>
 
-            <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSave}>
+            <Pressable
+              style={({ pressed }) => [styles.saveBtn, { backgroundColor: pressed ? colors.primary + "cc" : colors.primary }]}
+              onPress={handleSave}
+            >
               <Text style={[styles.saveBtnText, { color: colors.primaryForeground }]}>Alarm Ekle</Text>
             </Pressable>
           </View>
@@ -147,15 +163,15 @@ function AlertCard({ alert }: { alert: PriceAlert }) {
   const { removeAlert, dismissTriggered } = useAlerts();
   const { quotes } = useStocks();
   const price = quotes[alert.symbol]?.regularMarketPrice;
-  const progress = price != null && alert.targetPrice > 0
-    ? Math.min((price / alert.targetPrice) * 100, 100)
-    : null;
 
   const alertColor =
-    alert.alertType === "tp" ? colors.up :
-    alert.alertType === "sl" ? colors.down :
-    alert.alertType === "above" ? colors.up :
-    colors.down;
+    alert.alertType === "tp" || alert.alertType === "above" ? colors.up : colors.down;
+
+  const progress = price != null && alert.targetPrice > 0
+    ? Math.min(Math.max((price / alert.targetPrice) * 100, 0), 100)
+    : null;
+
+  const diff = price != null ? ((alert.targetPrice - price) / price * 100) : null;
 
   const handleDelete = () => {
     Alert.alert("Alarmı Sil", `${alert.symbol} alarmını silmek istiyor musunuz?`, [
@@ -165,32 +181,58 @@ function AlertCard({ alert }: { alert: PriceAlert }) {
   };
 
   return (
-    <View style={[styles.alertCard, { backgroundColor: colors.card, borderColor: alert.triggered ? alertColor : colors.border }]}>
-      <View style={styles.alertLeft}>
-        <View style={styles.alertSymbolRow}>
-          <Text style={[styles.alertSymbol, { color: colors.foreground }]}>{alert.symbol}</Text>
-          {alert.triggered && (
-            <View style={[styles.triggeredBadge, { backgroundColor: alertColor }]}>
-              <Text style={styles.triggeredText}>TETIKLENDI</Text>
-            </View>
-          )}
+    <View style={[
+      styles.alertCard,
+      { backgroundColor: colors.card, borderColor: alert.triggered ? alertColor : colors.border }
+    ]}>
+      {/* Left accent bar */}
+      <View style={[styles.alertAccent, { backgroundColor: alertColor }]} />
+
+      <View style={styles.alertBody}>
+        <View style={styles.alertTopRow}>
+          <View style={styles.alertSymbolRow}>
+            <Text style={[styles.alertSymbol, { color: colors.foreground }]}>{alert.symbol}</Text>
+            {alert.triggered && (
+              <View style={[styles.triggeredBadge, { backgroundColor: alertColor }]}>
+                <Text style={styles.triggeredText}>TETİKLENDİ</Text>
+              </View>
+            )}
+          </View>
+          <Pressable onPress={handleDelete} hitSlop={10}>
+            <IconTrash color={colors.mutedForeground} size={15} />
+          </Pressable>
         </View>
-        <Text style={[styles.alertDesc, { color: alertColor }]}>
-          <Feather name={ALERT_ICONS[alert.alertType]} size={11} color={alertColor} />
-          {" "}{ALERT_LABELS[alert.alertType]}: ₺{alert.targetPrice.toFixed(2)}
-        </Text>
-        {price != null && (
-          <Text style={[styles.alertCurrent, { color: colors.mutedForeground }]}>
-            Güncel: ₺{price.toFixed(2)}
+
+        <View style={styles.alertDescRow}>
+          <AlertIcon type={alert.alertType} color={alertColor} size={13} />
+          <Text style={[styles.alertDesc, { color: alertColor }]}>
+            {ALERT_LABELS[alert.alertType]}: ₺{alert.targetPrice.toFixed(2)}
           </Text>
+        </View>
+
+        {price != null && (
+          <View style={styles.alertPriceRow}>
+            <Text style={[styles.alertCurrent, { color: colors.mutedForeground }]}>
+              Güncel: ₺{price.toFixed(2)}
+            </Text>
+            {diff != null && !alert.triggered && (
+              <Text style={[styles.alertDiff, { color: Math.abs(diff) < 2 ? colors.neutral : colors.mutedForeground }]}>
+                {diff > 0 ? "+" : ""}{diff.toFixed(1)}%
+              </Text>
+            )}
+          </View>
         )}
+
+        {progress != null && !alert.triggered && (
+          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+            <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: alertColor }]} />
+          </View>
+        )}
+
         {alert.note ? (
           <Text style={[styles.alertNote, { color: colors.mutedForeground }]}>{alert.note}</Text>
         ) : null}
       </View>
-      <Pressable onPress={handleDelete} hitSlop={8}>
-        <Feather name="trash-2" size={16} color={colors.mutedForeground} />
-      </Pressable>
     </View>
   );
 }
@@ -207,16 +249,28 @@ export default function AlertsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }, topPaddingStyle]}>
+      {/* Header */}
+      <View style={[styles.pageHeader, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.pageTitle, { color: colors.foreground }]}>Alarmlar</Text>
+        {alerts.length > 0 && (
+          <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
+            <Text style={[styles.countText, { color: colors.mutedForeground }]}>{alerts.length}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Triggered banner */}
       {triggeredAlerts.length > 0 && (
-        <View style={[styles.triggerBanner, { backgroundColor: `${colors.down}22`, borderColor: `${colors.down}55` }]}>
-          <Feather name="alert-triangle" size={16} color={colors.down} />
-          <Text style={[styles.triggerText, { color: colors.down }]}>
+        <Pressable
+          style={[styles.triggerBanner, { backgroundColor: `${colors.neutral}18`, borderColor: `${colors.neutral}44` }]}
+          onPress={clearTriggered}
+        >
+          <IconAlertTriangle color={colors.neutral} size={16} />
+          <Text style={[styles.triggerText, { color: colors.neutral }]}>
             {triggeredAlerts.length} alarm tetiklendi!
           </Text>
-          <Pressable onPress={clearTriggered} hitSlop={8}>
-            <Text style={[styles.dismissText, { color: colors.mutedForeground }]}>Kapat</Text>
-          </Pressable>
-        </View>
+          <Text style={[styles.dismissText, { color: colors.mutedForeground }]}>Kapat ›</Text>
+        </Pressable>
       )}
 
       {alerts.length === 0 ? (
@@ -230,7 +284,7 @@ export default function AlertsScreen() {
           data={[...triggered, ...active]}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <AlertCard alert={item} />}
-          contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: insets.bottom + 80 }}
+          contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: insets.bottom + 100 }}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             triggered.length > 0 && active.length > 0 ? (
@@ -243,10 +297,16 @@ export default function AlertsScreen() {
       )}
 
       <Pressable
-        style={[styles.fab, { backgroundColor: colors.primary, bottom: insets.bottom + 90 }]}
-        onPress={() => { setShowModal(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}
+        style={({ pressed }) => [
+          styles.fab,
+          { backgroundColor: pressed ? colors.primary + "cc" : colors.primary, bottom: insets.bottom + 90 },
+        ]}
+        onPress={() => {
+          setShowModal(true);
+          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }}
       >
-        <Feather name="plus" size={24} color="#fff" />
+        <IconPlus color="#fff" size={24} />
       </Pressable>
 
       <AddAlertModal visible={showModal} onClose={() => setShowModal(false)} />
@@ -256,66 +316,84 @@ export default function AlertsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  pageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  pageTitle: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  countBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  countText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   triggerBanner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     margin: 12,
+    marginBottom: 4,
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
   },
   triggerText: { flex: 1, fontSize: 13, fontFamily: "Inter_600SemiBold" },
   dismissText: { fontSize: 12, fontFamily: "Inter_500Medium" },
   alertCard: {
     flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
+    overflow: "hidden",
   },
-  alertLeft: { flex: 1 },
-  alertSymbolRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
-  alertSymbol: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  triggeredBadge: {
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
+  alertAccent: { width: 4 },
+  alertBody: { flex: 1, padding: 12 },
+  alertTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
+  alertSymbolRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  alertSymbol: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  triggeredBadge: { borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 },
   triggeredText: { color: "#fff", fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
-  alertDesc: { fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 2 },
+  alertDescRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 4 },
+  alertDesc: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  alertPriceRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
   alertCurrent: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  alertNote: { fontSize: 11, fontFamily: "Inter_400Regular", fontStyle: "italic", marginTop: 2 },
-  sectionHeader: { fontSize: 12, fontFamily: "Inter_500Medium", marginBottom: 8, marginTop: 4 },
+  alertDiff: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  progressTrack: { height: 3, borderRadius: 2, overflow: "hidden", marginBottom: 4 },
+  progressFill: { height: "100%", borderRadius: 2 },
+  alertNote: { fontSize: 11, fontFamily: "Inter_400Regular", fontStyle: "italic", marginTop: 4 },
+  sectionHeader: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6, marginTop: 4, letterSpacing: 0.3 },
   fab: {
     position: "absolute",
     right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
     elevation: 8,
   },
-  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.7)" },
+  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.75)" },
   sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 20,
+    paddingTop: 12,
   },
-  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  sheetTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
-  field: { marginBottom: 12 },
-  label: { fontSize: 12, fontFamily: "Inter_500Medium", marginBottom: 6 },
-  input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, fontFamily: "Inter_400Regular" },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 16 },
+  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  sheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  closeBtn: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  field: { marginBottom: 14 },
+  label: { fontSize: 12, fontFamily: "Inter_500Medium", marginBottom: 7 },
+  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 13, paddingVertical: 11, fontSize: 15, fontFamily: "Inter_400Regular" },
   typeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  typeBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 7 },
-  typeBtnText: { fontSize: 12, fontFamily: "Inter_500Medium" },
-  saveBtn: { borderRadius: 10, padding: 14, alignItems: "center", marginTop: 4 },
-  saveBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  typeBtn: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 9, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 8 },
+  typeBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  saveBtn: { borderRadius: 12, padding: 15, alignItems: "center", marginTop: 4 },
+  saveBtnText: { fontSize: 15, fontFamily: "Inter_700Bold" },
 });
