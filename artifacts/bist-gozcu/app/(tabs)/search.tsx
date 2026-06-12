@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   FlatList,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -9,13 +10,15 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { ALL_BIST_STOCKS, StockMeta } from "@/constants/bistStocks";
 import StockRow from "@/components/StockRow";
+import { IconSearch } from "@/components/TabIcon";
+
+const SECTORS = Array.from(new Set(ALL_BIST_STOCKS.map((s) => s.sector))).sort();
 
 export default function SearchScreen() {
   const colors = useColors();
@@ -23,31 +26,55 @@ export default function SearchScreen() {
   const { quotes } = useStocks();
   const { addFavorite, isFavorite } = useFavorites();
   const [query, setQuery] = useState("");
+  const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
 
   const results = useMemo<StockMeta[]>(() => {
     const q = query.trim().toUpperCase();
-    if (q.length < 1) return [];
-    return ALL_BIST_STOCKS.filter(
-      (s) => s.symbol.includes(q) || s.name.toUpperCase().includes(q) || s.sector.toUpperCase().includes(q)
-    ).slice(0, 40);
-  }, [query]);
+    return ALL_BIST_STOCKS.filter((s) => {
+      const matchQuery =
+        q === "" ||
+        s.symbol.includes(q) ||
+        s.name.toUpperCase().includes(q) ||
+        s.sector.toUpperCase().includes(q);
+      const matchSector = selectedSector == null || s.sector === selectedSector;
+      return matchQuery && matchSector;
+    });
+  }, [query, selectedSector]);
 
-  const handleAddToWatchlist = (symbol: string) => {
+  const handleAddToWatchlist = useCallback((symbol: string) => {
     if (!isFavorite(symbol)) {
       addFavorite(symbol);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setAddedMsg(`${symbol} favorilere eklendi`);
       setTimeout(() => setAddedMsg(null), 2000);
     }
+  }, [isFavorite, addFavorite]);
+
+  const handleSector = useCallback((sector: string) => {
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    setSelectedSector((prev) => (prev === sector ? null : sector));
+  }, []);
+
+  const clearSearch = () => {
+    setQuery("");
+    setSelectedSector(null);
   };
 
-  const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
+  const renderItem = useCallback(({ item }: { item: StockMeta }) => (
+    <StockRow
+      symbol={item.symbol}
+      quote={quotes[item.symbol]}
+      showFavoriteBtn
+      onAddToWatchlist={handleAddToWatchlist}
+    />
+  ), [quotes, handleAddToWatchlist]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }, topPaddingStyle]}>
-      <View style={[styles.searchBar, { backgroundColor: colors.input, borderColor: colors.border }]}>
-        <Feather name="search" size={16} color={colors.mutedForeground} style={{ marginRight: 8 }} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Search Bar */}
+      <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <IconSearch color={colors.mutedForeground} size={18} />
         <TextInput
           style={[styles.input, { color: colors.foreground }]}
           value={query}
@@ -57,61 +84,78 @@ export default function SearchScreen() {
           autoCapitalize="characters"
           autoCorrect={false}
           returnKeyType="search"
+          onSubmitEditing={Keyboard.dismiss}
         />
-        {query.length > 0 && (
-          <Pressable onPress={() => setQuery("")} hitSlop={8}>
-            <Feather name="x-circle" size={16} color={colors.mutedForeground} />
+        {(query.length > 0 || selectedSector != null) && (
+          <Pressable onPress={clearSearch} hitSlop={8}>
+            <Text style={[styles.clearX, { color: colors.mutedForeground }]}>✕</Text>
           </Pressable>
         )}
       </View>
 
+      {/* Toast */}
       {addedMsg && (
         <View style={[styles.toast, { backgroundColor: colors.up }]}>
           <Text style={styles.toastText}>{addedMsg}</Text>
         </View>
       )}
 
-      {query.length === 0 ? (
-        <View style={styles.hint}>
-          <Feather name="search" size={36} color={colors.border} />
-          <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-            BIST'teki tüm hisseleri arayın
-          </Text>
-          <Text style={[styles.hintSub, { color: colors.mutedForeground }]}>
-            Sembol, şirket adı veya sektör ile arama yapabilirsiniz
-          </Text>
-        </View>
-      ) : results.length === 0 ? (
-        <View style={styles.hint}>
-          <Feather name="alert-circle" size={36} color={colors.border} />
-          <Text style={[styles.hintText, { color: colors.mutedForeground }]}>
-            Sonuç bulunamadı
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={results}
-          keyExtractor={(item) => item.symbol}
-          renderItem={({ item }) => (
-            <View>
-              <StockRow
-                symbol={item.symbol}
-                quote={quotes[item.symbol]}
-                showFavoriteBtn
-                onAddToWatchlist={handleAddToWatchlist}
-              />
-              <View style={[styles.sectorTag, { borderBottomColor: colors.border }]}>
-                <View style={[styles.chip, { backgroundColor: colors.accent }]}>
-                  <Text style={[styles.chipText, { color: colors.mutedForeground }]}>{item.sector}</Text>
-                </View>
-              </View>
-            </View>
-          )}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+      {/* Sector chips */}
+      <FlatList
+        data={SECTORS}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(s) => s}
+        style={[styles.sectorRow, { borderBottomColor: colors.border }]}
+        contentContainerStyle={{ paddingHorizontal: 12, gap: 6, paddingVertical: 8 }}
+        renderItem={({ item }) => (
+          <Pressable
+            style={[
+              styles.sectorChip,
+              {
+                backgroundColor: selectedSector === item ? colors.primary : colors.card,
+                borderColor: selectedSector === item ? colors.primary : colors.border,
+              },
+            ]}
+            onPress={() => handleSector(item)}
+          >
+            <Text style={[
+              styles.sectorText,
+              { color: selectedSector === item ? "#fff" : colors.mutedForeground },
+            ]}>
+              {item}
+            </Text>
+          </Pressable>
+        )}
+      />
+
+      {/* Count bar */}
+      <View style={[styles.countBar, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.countText, { color: colors.mutedForeground }]}>
+          {results.length} hisse{selectedSector ? ` · ${selectedSector}` : ""}
+          {query.length > 0 ? ` · "${query}"` : ""}
+        </Text>
+      </View>
+
+      {/* Results */}
+      <FlatList
+        data={results}
+        keyExtractor={(item) => item.symbol}
+        renderItem={renderItem}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>
+              Sonuç bulunamadı
+            </Text>
+            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
+              "{query}" için eşleşme yok
+            </Text>
+          </View>
+        }
+      />
     </View>
   );
 }
@@ -124,30 +168,35 @@ const styles = StyleSheet.create({
     margin: 12,
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: Platform.OS === "ios" ? 10 : 7,
     borderWidth: 1,
+    gap: 8,
   },
   input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular", paddingVertical: 0 },
-  hint: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, padding: 32 },
-  hintText: { fontSize: 16, fontFamily: "Inter_500Medium", textAlign: "center" },
-  hintSub: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
-  sectorTag: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  chip: {
-    alignSelf: "flex-start",
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  chipText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  clearX: { fontSize: 14, paddingHorizontal: 2 },
   toast: {
     marginHorizontal: 12,
+    marginBottom: 6,
     borderRadius: 8,
     padding: 10,
     alignItems: "center",
   },
   toastText: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  sectorRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0 },
+  sectorChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  sectorText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  countBar: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  countText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  empty: { alignItems: "center", marginTop: 60, gap: 6 },
+  emptyTitle: { fontSize: 16, fontFamily: "Inter_500Medium" },
+  emptySub: { fontSize: 13, fontFamily: "Inter_400Regular" },
 });

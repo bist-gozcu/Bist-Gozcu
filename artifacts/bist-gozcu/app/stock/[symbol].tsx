@@ -24,6 +24,9 @@ import {
   rsi,
   sma,
   moneyFlowIndex,
+  atr,
+  stochastic,
+  aroon,
   detectCandlePatterns,
   getOverallCandleDirection,
   CandlePattern,
@@ -136,17 +139,26 @@ export default function StockDetailScreen() {
   };
 
   const n = chart?.closes.length ?? 0;
-  const macdData   = chart && n >= 26 ? macd(chart.closes) : null;
-  const rsiData    = chart && n >= 14 ? rsi(chart.closes) : null;
-  const mfiData    = chart && n >= 14 ? moneyFlowIndex(chart.highs, chart.lows, chart.closes, chart.volumes) : null;
-  const ma20Data   = chart && n >= 20 ? sma(chart.closes, 20) : null;
-  const ma50Data   = chart && n >= 50 ? sma(chart.closes, 50) : null;
-  const latestMacd = macdData?.macd[n - 1];
-  const latestHist = macdData?.histogram[n - 1];
-  const latestRsi  = rsiData?.[n - 1];
-  const latestMfi  = mfiData?.[n - 1];
-  const latestMa20 = ma20Data?.[n - 1];
-  const latestMa50 = ma50Data?.[n - 1];
+  const macdData    = chart && n >= 26 ? macd(chart.closes) : null;
+  const rsiData     = chart && n >= 14 ? rsi(chart.closes) : null;
+  const mfiData     = chart && n >= 14 ? moneyFlowIndex(chart.highs, chart.lows, chart.closes, chart.volumes) : null;
+  const ma20Data    = chart && n >= 20 ? sma(chart.closes, 20) : null;
+  const ma50Data    = chart && n >= 50 ? sma(chart.closes, 50) : null;
+  const atrData     = chart && n >= 15 ? atr(chart.highs, chart.lows, chart.closes, 14) : null;
+  const stochData   = chart && n >= 17 ? stochastic(chart.highs, chart.lows, chart.closes, 14, 3) : null;
+  const aroonData   = chart && n >= 26 ? aroon(chart.highs, chart.lows, 25) : null;
+  const latestMacd  = macdData?.macd[n - 1];
+  const latestHist  = macdData?.histogram[n - 1];
+  const latestRsi   = rsiData?.[n - 1];
+  const latestMfi   = mfiData?.[n - 1];
+  const latestMa20  = ma20Data?.[n - 1];
+  const latestMa50  = ma50Data?.[n - 1];
+  const latestAtr   = atrData?.[n - 1];
+  const latestStochK = stochData?.k[n - 1];
+  const latestStochD = stochData?.d[n - 1];
+  const latestAroonUp   = aroonData?.up[n - 1];
+  const latestAroonDown = aroonData?.down[n - 1];
+  const latestAroonOsc  = aroonData?.oscillator[n - 1];
 
   const candleDir = getOverallCandleDirection(candlePatterns);
   const candleDirColor =
@@ -294,6 +306,16 @@ export default function StockDetailScreen() {
                 }
               />
               <IndicatorBar
+                label="Stochastic %K (14) — Momentum"
+                value={latestStochK ?? NaN}
+                min={0} max={100}
+                color={
+                  latestStochK == null ? colors.mutedForeground :
+                  latestStochK < 20 ? colors.up :
+                  latestStochK > 80 ? colors.down : colors.neutral
+                }
+              />
+              <IndicatorBar
                 label="MFI (14) — Para Akışı"
                 value={latestMfi ?? NaN}
                 min={0} max={100}
@@ -303,11 +325,38 @@ export default function StockDetailScreen() {
                   latestMfi > 80 ? colors.down : colors.neutral
                 }
               />
+              {latestAroonUp != null && latestAroonDown != null && (
+                <IndicatorBar
+                  label={`Aroon — ↑${latestAroonUp.toFixed(0)} ↓${latestAroonDown.toFixed(0)}`}
+                  value={(latestAroonOsc ?? 0) + 100}
+                  min={0} max={200}
+                  color={
+                    (latestAroonOsc ?? 0) > 40 ? colors.up :
+                    (latestAroonOsc ?? 0) < -40 ? colors.down : colors.neutral
+                  }
+                />
+              )}
               <StatRow
                 label="MACD"
                 value={latestMacd != null ? latestMacd.toFixed(3) : "—"}
                 valueColor={latestHist != null ? (latestHist > 0 ? colors.up : colors.down) : undefined}
               />
+              {latestStochK != null && latestStochD != null && (
+                <StatRow
+                  label="Stoch %D (sinyal)"
+                  value={`${latestStochD.toFixed(1)} / %K: ${latestStochK.toFixed(1)}`}
+                  valueColor={latestStochK > latestStochD ? colors.up : colors.down}
+                />
+              )}
+              {latestAtr != null && (
+                <StatRow
+                  label="ATR (14) — Volatilite"
+                  value={`₺${latestAtr.toFixed(2)}`}
+                  valueColor={
+                    price != null && latestAtr / price > 0.03 ? colors.neutral : colors.mutedForeground
+                  }
+                />
+              )}
               {latestMa20 != null && (
                 <StatRow
                   label="MA 20"

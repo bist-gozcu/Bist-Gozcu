@@ -169,6 +169,63 @@ export function moneyFlowIndex(
   return result;
 }
 
+/* ─── ATR (Average True Range) ─── */
+export function atr(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+): number[] {
+  const result: number[] = new Array(closes.length).fill(NaN);
+  if (closes.length < period + 1) return result;
+  const trueRanges: number[] = [NaN];
+  for (let i = 1; i < closes.length; i++) {
+    const hl = highs[i] - lows[i];
+    const hpc = Math.abs(highs[i] - closes[i - 1]);
+    const lpc = Math.abs(lows[i] - closes[i - 1]);
+    trueRanges.push(Math.max(hl, hpc, lpc));
+  }
+  let atrVal = 0;
+  for (let i = 1; i <= period; i++) atrVal += trueRanges[i];
+  atrVal /= period;
+  result[period] = atrVal;
+  for (let i = period + 1; i < closes.length; i++) {
+    atrVal = (atrVal * (period - 1) + trueRanges[i]) / period;
+    result[i] = atrVal;
+  }
+  return result;
+}
+
+/* ─── Aroon (Up, Down, Oscillator) ─── */
+export interface AroonResult {
+  up: number[];
+  down: number[];
+  oscillator: number[];
+}
+
+export function aroon(
+  highs: number[],
+  lows: number[],
+  period = 25
+): AroonResult {
+  const up: number[] = new Array(highs.length).fill(NaN);
+  const down: number[] = new Array(lows.length).fill(NaN);
+  const oscillator: number[] = new Array(highs.length).fill(NaN);
+
+  for (let i = period; i < highs.length; i++) {
+    const sliceH = highs.slice(i - period, i + 1);
+    const sliceL = lows.slice(i - period, i + 1);
+    const maxIdx = sliceH.reduce((best, v, idx) => (v > sliceH[best] ? idx : best), 0);
+    const minIdx = sliceL.reduce((best, v, idx) => (v < sliceL[best] ? idx : best), 0);
+    const aroonUp = ((maxIdx) / period) * 100;
+    const aroonDown = ((minIdx) / period) * 100;
+    up[i] = aroonUp;
+    down[i] = aroonDown;
+    oscillator[i] = aroonUp - aroonDown;
+  }
+  return { up, down, oscillator };
+}
+
 export type Signal = "buy" | "sell" | "neutral";
 
 export interface AnalysisResult {
@@ -181,6 +238,12 @@ export interface AnalysisResult {
   ma20: number;
   ma50: number;
   currentPrice: number;
+  atrValue: number;
+  stochK: number;
+  stochD: number;
+  aroonUp: number;
+  aroonDown: number;
+  aroonOsc: number;
 }
 
 export function analyzeStock(
@@ -190,21 +253,28 @@ export function analyzeStock(
   volumes: number[]
 ): AnalysisResult {
   const n = closes.length;
-  if (n < 30) {
-    return {
-      signal: "neutral",
-      score: 0,
-      reasons: ["Yetersiz veri"],
-      rsiValue: NaN,
-      macdValue: NaN,
-      mfiValue: NaN,
-      ma20: NaN,
-      ma50: NaN,
-      currentPrice: closes[n - 1] ?? 0,
-    };
-  }
+  const empty: AnalysisResult = {
+    signal: "neutral",
+    score: 0,
+    reasons: ["Yetersiz veri"],
+    rsiValue: NaN,
+    macdValue: NaN,
+    mfiValue: NaN,
+    ma20: NaN,
+    ma50: NaN,
+    currentPrice: closes[n - 1] ?? 0,
+    atrValue: NaN,
+    stochK: NaN,
+    stochD: NaN,
+    aroonUp: NaN,
+    aroonDown: NaN,
+    aroonOsc: NaN,
+  };
+  if (n < 30) return empty;
 
   const currentPrice = closes[n - 1];
+
+  /* --- existing indicators --- */
   const rsiArr = rsi(closes, 14);
   const rsiVal = rsiArr[n - 1] ?? NaN;
   const macdResult = macd(closes);
@@ -218,9 +288,25 @@ export function analyzeStock(
   const mfiArr = moneyFlowIndex(highs, lows, closes, volumes, 14);
   const mfiVal = mfiArr[n - 1] ?? NaN;
 
+  /* --- new indicators --- */
+  const atrArr = atr(highs, lows, closes, 14);
+  const atrVal = atrArr[n - 1] ?? NaN;
+
+  const stochResult = stochastic(highs, lows, closes, 14, 3);
+  const stochK = stochResult.k[n - 1] ?? NaN;
+  const stochD = stochResult.d[n - 1] ?? NaN;
+  const prevStochK = stochResult.k[n - 2] ?? NaN;
+  const prevStochD = stochResult.d[n - 2] ?? NaN;
+
+  const aroonResult = aroon(highs, lows, 25);
+  const aroonUp = aroonResult.up[n - 1] ?? NaN;
+  const aroonDown = aroonResult.down[n - 1] ?? NaN;
+  const aroonOsc = aroonResult.oscillator[n - 1] ?? NaN;
+
   let score = 0;
   const reasons: string[] = [];
 
+  /* RSI */
   if (!isNaN(rsiVal)) {
     if (rsiVal < 30) { score += 2; reasons.push(`RSI aşırı satım (${rsiVal.toFixed(0)})`); }
     else if (rsiVal < 45) { score += 1; reasons.push(`RSI düşük bölge (${rsiVal.toFixed(0)})`); }
@@ -228,6 +314,7 @@ export function analyzeStock(
     else if (rsiVal > 55) { score -= 1; reasons.push(`RSI yüksek bölge (${rsiVal.toFixed(0)})`); }
   }
 
+  /* MACD */
   if (!isNaN(macdHist) && !isNaN(prevHist)) {
     if (macdHist > 0 && prevHist < 0) { score += 2; reasons.push("MACD yukarı kesim"); }
     else if (macdHist > 0) { score += 1; reasons.push("MACD pozitif"); }
@@ -235,6 +322,7 @@ export function analyzeStock(
     else { score -= 1; reasons.push("MACD negatif"); }
   }
 
+  /* MA */
   if (!isNaN(ma20) && !isNaN(ma50)) {
     if (currentPrice > ma20 && currentPrice > ma50) { score += 1; reasons.push("Fiyat MA20 & MA50 üstünde"); }
     else if (currentPrice < ma20 && currentPrice < ma50) { score -= 1; reasons.push("Fiyat MA20 & MA50 altında"); }
@@ -242,14 +330,33 @@ export function analyzeStock(
     else { score -= 1; reasons.push("MA20 < MA50 (düşüş trendi)"); }
   }
 
+  /* MFI */
   if (!isNaN(mfiVal)) {
     if (mfiVal < 20) { score += 1; reasons.push(`Para akışı düşük (MFI: ${mfiVal.toFixed(0)})`); }
     else if (mfiVal > 80) { score -= 1; reasons.push(`Para akışı yüksek (MFI: ${mfiVal.toFixed(0)})`); }
   }
 
+  /* Stochastic */
+  if (!isNaN(stochK) && !isNaN(stochD) && !isNaN(prevStochK) && !isNaN(prevStochD)) {
+    const crossedUp = prevStochK <= prevStochD && stochK > stochD;
+    const crossedDown = prevStochK >= prevStochD && stochK < stochD;
+    if (stochK < 20 && crossedUp) { score += 2; reasons.push(`Stochastic aşırı satım + yukarı kesim (%K:${stochK.toFixed(0)})`); }
+    else if (stochK < 20) { score += 1; reasons.push(`Stochastic aşırı satım bölgesi (%K:${stochK.toFixed(0)})`); }
+    else if (stochK > 80 && crossedDown) { score -= 2; reasons.push(`Stochastic aşırı alım + aşağı kesim (%K:${stochK.toFixed(0)})`); }
+    else if (stochK > 80) { score -= 1; reasons.push(`Stochastic aşırı alım bölgesi (%K:${stochK.toFixed(0)})`); }
+  }
+
+  /* Aroon */
+  if (!isNaN(aroonOsc)) {
+    if (aroonUp > 70 && aroonDown < 30) { score += 2; reasons.push(`Aroon güçlü yükseliş trendi (↑${aroonUp.toFixed(0)})`); }
+    else if (aroonOsc > 40) { score += 1; reasons.push(`Aroon pozitif (${aroonOsc.toFixed(0)})`); }
+    else if (aroonDown > 70 && aroonUp < 30) { score -= 2; reasons.push(`Aroon güçlü düşüş trendi (↓${aroonDown.toFixed(0)})`); }
+    else if (aroonOsc < -40) { score -= 1; reasons.push(`Aroon negatif (${aroonOsc.toFixed(0)})`); }
+  }
+
   let signal: Signal = "neutral";
-  if (score >= 3) signal = "buy";
-  else if (score <= -3) signal = "sell";
+  if (score >= 4) signal = "buy";
+  else if (score <= -4) signal = "sell";
 
   return {
     signal,
@@ -261,6 +368,12 @@ export function analyzeStock(
     ma20,
     ma50,
     currentPrice,
+    atrValue: atrVal,
+    stochK,
+    stochD,
+    aroonUp,
+    aroonDown,
+    aroonOsc,
   };
 }
 
