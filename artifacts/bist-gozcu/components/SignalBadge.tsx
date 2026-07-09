@@ -22,7 +22,7 @@ export default function SignalBadge({ signal, size = "md", showIcon = true, stre
 
   const { label, color, icon } = config[signal];
   const isSmall = size === "sm";
-  const strengthLabel = strength ? ` · ${strength.toUpperCase()}` : "";
+  const strengthLabel = strength && signal !== "neutral" ? ` · ${strength.toUpperCase()}` : "";
 
   return (
     <View style={[styles.badge, { backgroundColor: `${color}22`, borderColor: `${color}55` }]}>
