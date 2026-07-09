@@ -366,18 +366,21 @@ export function analyzeStock(
     else if (aroonOsc < -40) { score -= 1; reasons.push(`Aroon negatif (${aroonOsc.toFixed(0)})`); }
   }
 
-  /* Volume confirmation: son hacim, 20 günlük ortalama hacmin üstünde mi? */
-  const recentVolumes = volumes.slice(-20);
-  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / (recentVolumes.length || 1);
-  const lastVolume = volumes[n - 1] ?? 0;
-  const volumeConfirmed = avgVolume > 0 && lastVolume > avgVolume * 1.1;
+  /* Volume confirmation: son TAMAMLANMIŞ günün hacmi, önceki 20 günlük ortalamanın üstünde mi?
+     Not: Son bar piyasa açıkken kısmi (gün içi) olabileceğinden, hacim karşılaştırması
+     son tamamlanmış bar (n-2) ile yapılır; bu da "hep düşük çıkma" yanlış pozitifini önler. */
+  const lastCompletedIdx = n - 2 >= 0 ? n - 2 : n - 1;
+  const priorVolumes = volumes.slice(Math.max(0, lastCompletedIdx - 20), lastCompletedIdx);
+  const avgVolume = priorVolumes.reduce((a, b) => a + b, 0) / (priorVolumes.length || 1);
+  const lastVolume = volumes[lastCompletedIdx] ?? 0;
+  const volumeConfirmed = avgVolume > 0 && lastVolume >= avgVolume * 0.85;
 
   if (volumeConfirmed && score > 0) { score += 1; reasons.push("Hacim ortalamanın üzerinde (teyit)"); }
   else if (volumeConfirmed && score < 0) { score -= 1; reasons.push("Hacim ortalamanın üzerinde (teyit)"); }
 
   let signal: Signal = "neutral";
-  if (score >= 4) signal = "buy";
-  else if (score <= -4) signal = "sell";
+  if (score >= 3) signal = "buy";
+  else if (score <= -3) signal = "sell";
 
   const absScore = Math.abs(score);
   const strength: SignalStrength = absScore >= 7 ? "güçlü" : absScore >= 4 ? "orta" : "zayıf";
@@ -422,6 +425,87 @@ export function analyzeStock(
     stopLoss,
     takeProfit,
     riskRewardRatio,
+  };
+}
+
+export function getActionAdvice(a: AnalysisResult): string {
+  if (a.signal === "buy") {
+    if (a.strength === "güçlü" && a.volumeConfirmed) {
+      return "Birden fazla gösterge aynı yönde ve hacimle teyitli: göreceli olarak daha güçlü bir alım fırsatı. Yine de tek seferde değil, kademeli alım ve belirlenen zarar-kes seviyesine uyum önerilir.";
+    }
+    if (!a.volumeConfirmed) {
+      return "Göstergeler alım yönünde ama hacim teyidi zayıf. Acele etmeyin; hacmin artmasını veya ek bir teyit sinyalini bekleyebilirsiniz.";
+    }
+    return "Göstergeler alım yönünde ama sinyal gücü orta/zayıf. Küçük pozisyonla başlayıp zarar-kes seviyesine sadık kalmak mantıklı olur.";
+  }
+  if (a.signal === "sell") {
+    if (a.strength === "güçlü" && a.volumeConfirmed) {
+      return "Birden fazla gösterge aynı yönde ve hacimle teyitli: satış/uzak durma sinyali güçlü görünüyor. Elinizde pozisyon varsa kâr/zarar kes seviyelerini gözden geçirin.";
+    }
+    if (!a.volumeConfirmed) {
+      return "Göstergeler satış yönünde ama hacim teyidi zayıf. Panik satıştan kaçının, ek teyit bekleyebilirsiniz.";
+    }
+    return "Göstergeler satış yönünde ama sinyal gücü orta/zayıf. Pozisyonunuz varsa riskinizi azaltmayı düşünebilirsiniz.";
+  }
+  return "Göstergeler net bir yön göstermiyor (birbirini nötrleyen sinyaller var). Bu genelde kararsız/yatay bir piyasa anlamına gelir; net bir sinyal oluşana kadar beklemek, yeni pozisyon açmamak mantıklı olur.";
+}
+
+export interface BacktestResult {
+  buySignalCount: number;
+  buyWinCount: number;
+  buyWinRate: number;
+  sellSignalCount: number;
+  sellWinCount: number;
+  sellWinRate: number;
+  horizonDays: number;
+}
+
+/**
+ * Basit geriye dönük test: elimizdeki geçmiş veri boyunca her gün için o güne kadarki
+ * veriyle analyzeStock çalıştırılır, AL/SAT sinyali üretildiğinde `horizonDays` gün sonraki
+ * fiyat değişimine bakılarak sinyalin "isabetli" olup olmadığı sayılır.
+ * Bu sadece mevcut hissenin kendi geçmişine dayanan yaklaşık bir gösterge olup gelecek performansı garanti etmez.
+ */
+export function backtestSignals(
+  closes: number[],
+  highs: number[],
+  lows: number[],
+  volumes: number[],
+  horizonDays = 5
+): BacktestResult {
+  let buySignalCount = 0, buyWinCount = 0;
+  let sellSignalCount = 0, sellWinCount = 0;
+  const n = closes.length;
+
+  for (let i = 30; i < n - horizonDays; i++) {
+    const slicedCloses = closes.slice(0, i + 1);
+    const slicedHighs = highs.slice(0, i + 1);
+    const slicedLows = lows.slice(0, i + 1);
+    const slicedVolumes = volumes.slice(0, i + 1);
+    const result = analyzeStock(slicedCloses, slicedHighs, slicedLows, slicedVolumes);
+    if (result.signal === "neutral") continue;
+
+    const priceAtSignal = closes[i];
+    const priceAfter = closes[i + horizonDays];
+    const changePct = ((priceAfter - priceAtSignal) / priceAtSignal) * 100;
+
+    if (result.signal === "buy") {
+      buySignalCount++;
+      if (changePct > 0) buyWinCount++;
+    } else if (result.signal === "sell") {
+      sellSignalCount++;
+      if (changePct < 0) sellWinCount++;
+    }
+  }
+
+  return {
+    buySignalCount,
+    buyWinCount,
+    buyWinRate: buySignalCount > 0 ? (buyWinCount / buySignalCount) * 100 : NaN,
+    sellSignalCount,
+    sellWinCount,
+    sellWinRate: sellSignalCount > 0 ? (sellWinCount / sellSignalCount) * 100 : NaN,
+    horizonDays,
   };
 }
 

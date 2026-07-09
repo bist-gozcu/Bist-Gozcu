@@ -34,6 +34,9 @@ import {
   detectCandlePatterns,
   getOverallCandleDirection,
   CandlePattern,
+  getActionAdvice,
+  backtestSignals,
+  BacktestResult,
 } from "@/utils/indicators";
 import { getStockMeta } from "@/constants/bistStocks";
 import SignalBadge from "@/components/SignalBadge";
@@ -67,22 +70,50 @@ function StatRow({ label, value, valueColor }: { label: string; value: string; v
   );
 }
 
-function IndicatorCard({ label, value, subLabel, min, max, color }: {
+const INDICATOR_INFO: Record<string, { title: string; body: string }> = {
+  RSI: {
+    title: "RSI (Göreceli Güç Endeksi)",
+    body: "Fiyatın son 14 günde ne kadar hızlı yükselip düştüğünü ölçer (0-100). 30'un altı 'aşırı satım' (tepki alımı gelebilir), 70'in üstü 'aşırı alım' (kâr satışı gelebilir) anlamına gelir. Tek başına al/sat kararı için yeterli değildir, trend yönüyle birlikte değerlendirilmelidir.",
+  },
+  "Stoch %K": {
+    title: "Stokastik Osilatör (%K)",
+    body: "Kapanış fiyatının son 14 günün en yüksek-en düşük aralığına göre nerede olduğunu gösterir (0-100). 20'nin altı aşırı satım, 80'in üstü aşırı alım bölgesidir. %K çizgisinin %D çizgisini yukarı/aşağı kesmesi kısa vadeli dönüş sinyali sayılır. RSI'a benzer ama daha hızlı tepki verir, bu yüzden yalancı sinyal üretebilir.",
+  },
+  MFI: {
+    title: "MFI (Para Akışı Endeksi)",
+    body: "RSI'a benzer ama hacmi de hesaba katar (0-100). 20'nin altı para girişinin zayıfladığını, 80'in üstü aşırı yüksek para girişi olduğunu (satış riski) gösterir. Hacim temelli olduğu için RSI'ı teyit etmek amacıyla birlikte kullanılır.",
+  },
+  Aroon: {
+    title: "Aroon Göstergesi",
+    body: "Son 25 günde en yüksek/en düşük fiyatın ne kadar süre önce oluştuğunu ölçerek trendin gücünü ve yönünü belirler. Aroon Up yüksek ve Aroon Down düşükse güçlü yükseliş trendi; tersi güçlü düşüş trendi anlamına gelir. Yatay/dalgalı piyasalarda güvenilirliği azalır.",
+  },
+};
+
+function IndicatorCard({ label, value, subLabel, min, max, color, onInfoPress }: {
   label: string;
   subLabel?: string;
   value: number;
   min: number;
   max: number;
   color: string;
+  onInfoPress?: () => void;
 }) {
   const colors = useColors();
   const pct = Math.max(0, Math.min(100, ((value - min) / (max - min || 1)) * 100));
   const displayVal = isNaN(value) ? "—" : value.toFixed(1);
   return (
-    <View style={[styles.indCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <Pressable
+      onPress={onInfoPress}
+      style={[styles.indCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
       <View style={styles.indCardTop}>
         <View style={styles.indCardLeft}>
-          <Text style={[styles.indLabel, { color: colors.foreground }]}>{label}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text style={[styles.indLabel, { color: colors.foreground }]}>{label}</Text>
+            <View style={[styles.infoDot, { borderColor: colors.mutedForeground }]}>
+              <Text style={{ color: colors.mutedForeground, fontSize: 9, fontFamily: "Inter_700Bold" }}>i</Text>
+            </View>
+          </View>
           {subLabel && <Text style={[styles.indSub, { color: colors.mutedForeground }]}>{subLabel}</Text>}
         </View>
         <Text style={[styles.indValue, { color }]}>{displayVal}</Text>
@@ -90,7 +121,7 @@ function IndicatorCard({ label, value, subLabel, min, max, color }: {
       <View style={[styles.indTrack, { backgroundColor: colors.border }]}>
         <View style={[styles.indFill, { width: `${pct}%`, backgroundColor: color }]} />
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -111,6 +142,8 @@ export default function StockDetailScreen() {
   const [qty, setQty] = useState("");
   const [avgCostStr, setAvgCostStr] = useState("");
   const [note, setNote] = useState("");
+  const [infoKey, setInfoKey] = useState<string | null>(null);
+  const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const qtyRef = useRef<TextInput>(null);
 
   const quote = quotes[symbol ?? ""];
@@ -134,6 +167,17 @@ export default function StockDetailScreen() {
       setLoadingChart(false);
     });
   }, [symbol, range]);
+
+  useEffect(() => {
+    if (!symbol) return;
+    fetchChartData(symbol, "6mo").then((data) => {
+      if (data && data.closes.length >= 40) {
+        setBacktest(backtestSignals(data.closes, data.highs, data.lows, data.volumes, 5));
+      } else {
+        setBacktest(null);
+      }
+    });
+  }, [symbol]);
 
   const handleFav = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -460,13 +504,13 @@ export default function StockDetailScreen() {
             <>
               <View style={styles.indGrid}>
                 {latestRsi != null && (
-                  <IndicatorCard label="RSI" subLabel="Aşırı Al/Sat" value={latestRsi} min={0} max={100} color={rsiColor} />
+                  <IndicatorCard label="RSI" subLabel="Aşırı Al/Sat" value={latestRsi} min={0} max={100} color={rsiColor} onInfoPress={() => setInfoKey("RSI")} />
                 )}
                 {latestStochK != null && (
-                  <IndicatorCard label="Stoch %K" subLabel="Momentum" value={latestStochK} min={0} max={100} color={stochColor} />
+                  <IndicatorCard label="Stoch %K" subLabel="Momentum" value={latestStochK} min={0} max={100} color={stochColor} onInfoPress={() => setInfoKey("Stoch %K")} />
                 )}
                 {latestMfi != null && (
-                  <IndicatorCard label="MFI" subLabel="Para Akışı" value={latestMfi} min={0} max={100} color={mfiColor} />
+                  <IndicatorCard label="MFI" subLabel="Para Akışı" value={latestMfi} min={0} max={100} color={mfiColor} onInfoPress={() => setInfoKey("MFI")} />
                 )}
                 {latestAroonOsc != null && (
                   <IndicatorCard
@@ -478,9 +522,13 @@ export default function StockDetailScreen() {
                       (latestAroonOsc ?? 0) > 40 ? colors.up :
                       (latestAroonOsc ?? 0) < -40 ? colors.down : colors.neutral
                     }
+                    onInfoPress={() => setInfoKey("Aroon")}
                   />
                 )}
               </View>
+              <Text style={[styles.indHint, { color: colors.mutedForeground }]}>
+                Bu göstergeler birbirini teyit etmek için birlikte kullanılır; hiçbiri tek başına kesin sinyal sayılmaz. Detay için bir göstergeye dokunun.
+              </Text>
 
               <View style={[styles.maRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 {latestMa20 != null && (
@@ -595,6 +643,12 @@ export default function StockDetailScreen() {
                 </Text>
               </View>
             )}
+            <View style={[styles.adviceBox, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <Text style={[styles.adviceLabel, { color: colors.foreground }]}>Ne Yapılmalı?</Text>
+              <Text style={[styles.reportText, { color: colors.mutedForeground }]}>
+                {getActionAdvice(analysis)}
+              </Text>
+            </View>
           </View>
         )}
 
@@ -619,6 +673,41 @@ export default function StockDetailScreen() {
               )}
               <Text style={[styles.reportText, { color: colors.mutedForeground, marginTop: 6 }]}>
                 Bu seviyeler ATR (Average True Range) volatilitesine göre hesaplanan referans noktalarıdır, kesin garanti sunmaz. Pozisyon büyüklüğünüzü zarar kesme mesafesine göre ayarlayın.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Signal Performance Tracking */}
+        {backtest && (backtest.buySignalCount > 0 || backtest.sellSignalCount > 0) && (
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Sinyal Performans Takibi</Text>
+            <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.reportText, { color: colors.mutedForeground, marginBottom: 8 }]}>
+                Son 6 ayda bu hissede üretilen AL/SAT sinyallerinin {backtest.horizonDays} gün sonrasında ne kadar isabetli çıktığı:
+              </Text>
+              {backtest.buySignalCount > 0 && (
+                <View style={styles.riskRow}>
+                  <Text style={[styles.riskLabel, { color: colors.mutedForeground }]}>
+                    AL sinyalleri ({backtest.buySignalCount} adet)
+                  </Text>
+                  <Text style={[styles.riskValue, { color: backtest.buyWinRate >= 50 ? colors.up : colors.down }]}>
+                    %{backtest.buyWinRate.toFixed(0)} isabet
+                  </Text>
+                </View>
+              )}
+              {backtest.sellSignalCount > 0 && (
+                <View style={styles.riskRow}>
+                  <Text style={[styles.riskLabel, { color: colors.mutedForeground }]}>
+                    SAT sinyalleri ({backtest.sellSignalCount} adet)
+                  </Text>
+                  <Text style={[styles.riskValue, { color: backtest.sellWinRate >= 50 ? colors.up : colors.down }]}>
+                    %{backtest.sellWinRate.toFixed(0)} isabet
+                  </Text>
+                </View>
+              )}
+              <Text style={[styles.reportText, { color: colors.mutedForeground, marginTop: 6 }]}>
+                Bu, sadece bu hissenin kendi geçmiş verisine dayanan bir istatistiktir; az sayıda sinyal varsa güvenilirliği düşer ve geçmiş performans gelecek için garanti oluşturmaz.
               </Text>
             </View>
           </View>
@@ -774,6 +863,31 @@ export default function StockDetailScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* ── Indicator Info Modal ── */}
+      <Modal
+        visible={infoKey != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setInfoKey(null)}
+      >
+        <Pressable style={styles.infoOverlay} onPress={() => setInfoKey(null)}>
+          <Pressable style={[styles.infoSheet, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                {infoKey ? INDICATOR_INFO[infoKey]?.title : ""}
+              </Text>
+              <Pressable onPress={() => setInfoKey(null)} hitSlop={12}
+                style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
+                <IconX color={colors.mutedForeground} size={15} />
+              </Pressable>
+            </View>
+            <Text style={[styles.reportText, { color: colors.mutedForeground }]}>
+              {infoKey ? INDICATOR_INFO[infoKey]?.body : ""}
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -841,6 +955,27 @@ const styles = StyleSheet.create({
   indValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   indTrack: { height: 4, borderRadius: 2, overflow: "hidden" },
   indFill: { height: "100%", borderRadius: 2 },
+  indHint: { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16, marginBottom: 12 },
+  adviceBox: { borderRadius: 10, padding: 12, borderWidth: StyleSheet.hairlineWidth, marginTop: 4, gap: 4 },
+  adviceLabel: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  infoDot: {
+    width: 13, height: 13, borderRadius: 7, borderWidth: 1,
+    alignItems: "center", justifyContent: "center",
+  },
+  infoOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    padding: 24,
+  },
+  infoSheet: {
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    gap: 12,
+  },
   maRow: {
     flexDirection: "row",
     borderRadius: 12,
