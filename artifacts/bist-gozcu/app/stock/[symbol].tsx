@@ -234,6 +234,85 @@ export default function StockDetailScreen() {
     return avg * 100;
   })();
 
+  const morningReport = (() => {
+    if (!analysis || price == null) return "Veri yükleniyor...";
+    const lines: string[] = [];
+
+    const signalLine =
+      analysis.signal === "buy"
+        ? `${symbol} teknik tabloda ALIM tarafında: ${analysis.reasons.length} gösterge fiyatın lehine.`
+        : analysis.signal === "sell"
+        ? `${symbol} teknik tabloda SATIM baskısı altında: ${analysis.reasons.length} gösterge fiyatın aleyhine.`
+        : `${symbol} şu an nötr bölgede, göstergeler net bir yön vermiyor.`;
+    lines.push(signalLine);
+
+    if (latestMa20 != null && latestMa50 != null) {
+      const gapPct = ((latestMa20 - latestMa50) / latestMa50) * 100;
+      if (Math.abs(gapPct) < 0.3) {
+        lines.push(`20 ve 50 günlük ortalamalar birbirine çok yakın (%${Math.abs(gapPct).toFixed(2)} fark), yön arayışı sürüyor.`);
+      } else if (latestMa20 > latestMa50) {
+        lines.push(`20 günlük ortalama, 50 günlüğün %${gapPct.toFixed(1)} üzerinde; orta vadeli trend yukarı eğilimli.`);
+      } else {
+        lines.push(`20 günlük ortalama, 50 günlüğün %${Math.abs(gapPct).toFixed(1)} altında; orta vadeli trend baskı altında.`);
+      }
+      if (price > latestMa20 && price > latestMa50) {
+        lines.push(`Fiyat her iki ortalamanın da üzerinde seyrediyor, kısa vadeli momentum güçlü.`);
+      } else if (price < latestMa20 && price < latestMa50) {
+        lines.push(`Fiyat her iki ortalamanın da altında, kısa vadeli momentum zayıf.`);
+      }
+    }
+
+    if (latestRsi != null) {
+      if (latestRsi >= 70) lines.push(`RSI ${latestRsi.toFixed(0)} ile aşırı alım bölgesinde, kısa vadeli geri çekilme riski artabilir.`);
+      else if (latestRsi <= 30) lines.push(`RSI ${latestRsi.toFixed(0)} ile aşırı satım bölgesinde, tepki alımları gelebilir.`);
+      else if (latestRsi > 55) lines.push(`RSI ${latestRsi.toFixed(0)} seviyesinde, alıcı baskısı hafif üstün.`);
+      else if (latestRsi < 45) lines.push(`RSI ${latestRsi.toFixed(0)} seviyesinde, satıcı baskısı hafif üstün.`);
+    }
+
+    if (latestMfi != null) {
+      if (latestMfi >= 80) lines.push(`Para akışı endeksi (MFI) ${latestMfi.toFixed(0)} ile aşırı yüksek, kâr satışı ihtimali var.`);
+      else if (latestMfi <= 20) lines.push(`Para akışı endeksi (MFI) ${latestMfi.toFixed(0)} ile düşük, para girişi zayıf.`);
+    }
+
+    if (latestStochK != null && latestStochD != null) {
+      if (latestStochK >= 80) lines.push(`Stokastik %K ${latestStochK.toFixed(0)} ile aşırı alımda.`);
+      else if (latestStochK <= 20) lines.push(`Stokastik %K ${latestStochK.toFixed(0)} ile aşırı satımda.`);
+      if (latestStochK > latestStochD && latestStochK < 80 && latestStochK > 20) {
+        lines.push(`%K, %D'yi yukarı kesti; kısa vadede pozitif momentum sinyali.`);
+      } else if (latestStochK < latestStochD && latestStochK < 80 && latestStochK > 20) {
+        lines.push(`%K, %D'nin altına indi; kısa vadede negatif momentum sinyali.`);
+      }
+    }
+
+    if (latestAroonUp != null && latestAroonDown != null) {
+      if (latestAroonUp >= 70 && latestAroonUp > latestAroonDown) {
+        lines.push(`Aroon Up ${latestAroonUp.toFixed(0)} ile güçlü, yükseliş trendi hakim.`);
+      } else if (latestAroonDown >= 70 && latestAroonDown > latestAroonUp) {
+        lines.push(`Aroon Down ${latestAroonDown.toFixed(0)} ile güçlü, düşüş trendi hakim.`);
+      }
+    }
+
+    if (latestMacd != null && latestHist != null) {
+      if (latestHist > 0 && latestMacd > 0) lines.push(`MACD pozitif bölgede ve histogram artıda, momentum yukarı yönlü.`);
+      else if (latestHist < 0 && latestMacd < 0) lines.push(`MACD negatif bölgede ve histogram ekside, momentum aşağı yönlü.`);
+      else if (latestHist > 0) lines.push(`MACD histogramı pozitife döndü, olası bir toparlanma sinyali.`);
+      else if (latestHist < 0) lines.push(`MACD histogramı negatife döndü, momentum kayboluyor.`);
+    }
+
+    if (candlePatterns.length > 0) {
+      lines.push(`Son mum formasyonu "${candlePatterns[0].name}" (${candleDirLabel.toLowerCase()} yönlü) olarak öne çıkıyor.`);
+    }
+
+    if (latestAtr != null && price > 0) {
+      const atrPct = (latestAtr / price) * 100;
+      if (atrPct > 3) lines.push(`ATR bazlı volatilite yüksek (%${atrPct.toFixed(1)}), pozisyon boyutunu buna göre ayarlayın.`);
+    } else if (volatility != null && volatility > 2) {
+      lines.push(`Son 20 günün ortalama günlük hareketi %${volatility.toFixed(1)}, dalgalanma yüksek.`);
+    }
+
+    return lines.filter(Boolean).join("\n");
+  })();
+
   const activeAlerts = alerts.filter((a) => a.symbol === symbol && !a.triggered);
 
   const sessionLabel =
@@ -516,34 +595,7 @@ export default function StockDetailScreen() {
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Sabah Raporu</Text>
           <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.reportText, { color: colors.mutedForeground }]}>
-              {!analysis || !price
-                ? "Veri yükleniyor..."
-                : [
-                    `${symbol} için sabah analizi:`,
-                    analysis.signal === "buy"
-                      ? "Teknik göstergeler ALIM sinyali veriyor."
-                      : analysis.signal === "sell"
-                      ? "Teknik göstergeler SATIM sinyali veriyor."
-                      : "Teknik göstergeler nötr, bekle-izle.",
-                    latestMa20 != null
-                      ? price > latestMa20
-                        ? "Fiyat 20 günlük ortalama üstünde."
-                        : "Fiyat 20 günlük ortalama altında."
-                      : "",
-                    latestMa20 != null && latestMa50 != null
-                      ? latestMa20 > latestMa50
-                        ? "Yükseliş trendi devam ediyor."
-                        : "Düşüş trendi sürebilir."
-                      : "",
-                    candlePatterns.length > 0
-                      ? `Mum analizi ${candleDirLabel.toLowerCase()} yönü işaret ediyor (${candlePatterns[0].name}).`
-                      : "",
-                    volatility != null && volatility > 2
-                      ? `Volatilite yüksek (%${volatility.toFixed(1)}), dikkatli işlem yapın.`
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join("\n")}
+              {morningReport}
             </Text>
           </View>
         </View>

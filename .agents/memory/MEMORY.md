@@ -1,0 +1,1 @@
+- [BIST Gözcü quote fetching](bist-gozcu-quotes.md) — quotes context only fetched BIST30; ALL_BIST_STOCKS pages need explicit inclusion + chunked batch requests.
