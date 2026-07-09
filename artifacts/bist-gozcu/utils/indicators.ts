@@ -228,6 +228,8 @@ export function aroon(
 
 export type Signal = "buy" | "sell" | "neutral";
 
+export type SignalStrength = "güçlü" | "orta" | "zayıf";
+
 export interface AnalysisResult {
   signal: Signal;
   score: number;
@@ -244,6 +246,11 @@ export interface AnalysisResult {
   aroonUp: number;
   aroonDown: number;
   aroonOsc: number;
+  strength: SignalStrength;
+  volumeConfirmed: boolean;
+  stopLoss: number;
+  takeProfit: number;
+  riskRewardRatio: number;
 }
 
 export function analyzeStock(
@@ -269,6 +276,11 @@ export function analyzeStock(
     aroonUp: NaN,
     aroonDown: NaN,
     aroonOsc: NaN,
+    strength: "zayıf",
+    volumeConfirmed: false,
+    stopLoss: NaN,
+    takeProfit: NaN,
+    riskRewardRatio: NaN,
   };
   if (n < 30) return empty;
 
@@ -354,9 +366,40 @@ export function analyzeStock(
     else if (aroonOsc < -40) { score -= 1; reasons.push(`Aroon negatif (${aroonOsc.toFixed(0)})`); }
   }
 
+  /* Volume confirmation: son hacim, 20 günlük ortalama hacmin üstünde mi? */
+  const recentVolumes = volumes.slice(-20);
+  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / (recentVolumes.length || 1);
+  const lastVolume = volumes[n - 1] ?? 0;
+  const volumeConfirmed = avgVolume > 0 && lastVolume > avgVolume * 1.1;
+
+  if (volumeConfirmed && score > 0) { score += 1; reasons.push("Hacim ortalamanın üzerinde (teyit)"); }
+  else if (volumeConfirmed && score < 0) { score -= 1; reasons.push("Hacim ortalamanın üzerinde (teyit)"); }
+
   let signal: Signal = "neutral";
   if (score >= 4) signal = "buy";
   else if (score <= -4) signal = "sell";
+
+  const absScore = Math.abs(score);
+  const strength: SignalStrength = absScore >= 7 ? "güçlü" : absScore >= 4 ? "orta" : "zayıf";
+
+  /* ATR bazlı stop-loss / take-profit (1.5x risk, 2.5x hedef -> ~1:1.67 R/R) */
+  let stopLoss = NaN;
+  let takeProfit = NaN;
+  let riskRewardRatio = NaN;
+  if (!isNaN(atrVal) && atrVal > 0) {
+    if (signal === "buy") {
+      stopLoss = currentPrice - atrVal * 1.5;
+      takeProfit = currentPrice + atrVal * 2.5;
+    } else if (signal === "sell") {
+      stopLoss = currentPrice + atrVal * 1.5;
+      takeProfit = currentPrice - atrVal * 2.5;
+    }
+    if (!isNaN(stopLoss)) {
+      const risk = Math.abs(currentPrice - stopLoss);
+      const reward = Math.abs(takeProfit - currentPrice);
+      riskRewardRatio = risk > 0 ? reward / risk : NaN;
+    }
+  }
 
   return {
     signal,
@@ -374,6 +417,11 @@ export function analyzeStock(
     aroonUp,
     aroonDown,
     aroonOsc,
+    strength,
+    volumeConfirmed,
+    stopLoss,
+    takeProfit,
+    riskRewardRatio,
   };
 }
 

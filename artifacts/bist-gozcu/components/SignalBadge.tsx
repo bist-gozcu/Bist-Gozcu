@@ -2,15 +2,16 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
-import { Signal } from "@/utils/indicators";
+import { Signal, SignalStrength } from "@/utils/indicators";
 
 interface SignalBadgeProps {
   signal: Signal;
   size?: "sm" | "md";
   showIcon?: boolean;
+  strength?: SignalStrength;
 }
 
-export default function SignalBadge({ signal, size = "md", showIcon = true }: SignalBadgeProps) {
+export default function SignalBadge({ signal, size = "md", showIcon = true, strength }: SignalBadgeProps) {
   const colors = useColors();
 
   const config = {
@@ -21,11 +22,12 @@ export default function SignalBadge({ signal, size = "md", showIcon = true }: Si
 
   const { label, color, icon } = config[signal];
   const isSmall = size === "sm";
+  const strengthLabel = strength ? ` · ${strength.toUpperCase()}` : "";
 
   return (
     <View style={[styles.badge, { backgroundColor: `${color}22`, borderColor: `${color}55` }]}>
       {showIcon && <Feather name={icon} size={isSmall ? 10 : 12} color={color} />}
-      <Text style={[styles.label, { color, fontSize: isSmall ? 10 : 11 }]}>{label}</Text>
+      <Text style={[styles.label, { color, fontSize: isSmall ? 10 : 11 }]}>{label}{strengthLabel}</Text>
     </View>
   );
 }

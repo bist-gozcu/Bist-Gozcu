@@ -369,7 +369,7 @@ export default function StockDetailScreen() {
             </View>
           </View>
           <View style={styles.priceRight}>
-            {analysis && <SignalBadge signal={analysis.signal} size="md" />}
+            {analysis && <SignalBadge signal={analysis.signal} size="md" strength={analysis.strength} />}
             <View style={styles.sessionRow}>
               <View style={[styles.sessionDot, {
                 backgroundColor: session === "open" ? colors.up : colors.mutedForeground
@@ -587,6 +587,40 @@ export default function StockDetailScreen() {
                 </View>
               );
             })}
+            {!analysis.volumeConfirmed && (
+              <View style={styles.reasonRow}>
+                <IconMinus color={colors.mutedForeground} size={16} />
+                <Text style={[styles.reasonText, { color: colors.mutedForeground }]}>
+                  Hacim teyidi yok, sinyal gücü sınırlı olabilir.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Risk Management */}
+        {analysis && analysis.signal !== "neutral" && !isNaN(analysis.stopLoss) && (
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Risk Yönetimi (ATR Bazlı)</Text>
+            <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.riskRow}>
+                <Text style={[styles.riskLabel, { color: colors.mutedForeground }]}>Zarar Kes</Text>
+                <Text style={[styles.riskValue, { color: colors.down }]}>₺{analysis.stopLoss.toFixed(2)}</Text>
+              </View>
+              <View style={styles.riskRow}>
+                <Text style={[styles.riskLabel, { color: colors.mutedForeground }]}>Kar Al Hedefi</Text>
+                <Text style={[styles.riskValue, { color: colors.up }]}>₺{analysis.takeProfit.toFixed(2)}</Text>
+              </View>
+              {!isNaN(analysis.riskRewardRatio) && (
+                <View style={styles.riskRow}>
+                  <Text style={[styles.riskLabel, { color: colors.mutedForeground }]}>Risk/Ödül Oranı</Text>
+                  <Text style={[styles.riskValue, { color: colors.foreground }]}>1 : {analysis.riskRewardRatio.toFixed(2)}</Text>
+                </View>
+              )}
+              <Text style={[styles.reportText, { color: colors.mutedForeground, marginTop: 6 }]}>
+                Bu seviyeler ATR (Average True Range) volatilitesine göre hesaplanan referans noktalarıdır, kesin garanti sunmaz. Pozisyon büyüklüğünüzü zarar kesme mesafesine göre ayarlayın.
+              </Text>
+            </View>
           </View>
         )}
 
@@ -837,6 +871,9 @@ const styles = StyleSheet.create({
   reasonText: { fontSize: 13, fontFamily: "Inter_400Regular", flex: 1, lineHeight: 19 },
   reportCard: { borderRadius: 12, padding: 14, borderWidth: StyleSheet.hairlineWidth },
   reportText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 21 },
+  riskRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
+  riskLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  riskValue: { fontSize: 14, fontFamily: "Inter_700Bold" },
   alertChip: {
     flexDirection: "row",
     alignItems: "center",
