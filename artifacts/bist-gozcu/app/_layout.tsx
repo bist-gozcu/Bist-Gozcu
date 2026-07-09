@@ -14,6 +14,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import DisclaimerModal from "@/components/DisclaimerModal";
 import { StockProvider } from "@/contexts/StockContext";
 import { PortfolioProvider } from "@/contexts/PortfolioContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
@@ -65,6 +66,7 @@ export default function RootLayout() {
                   <PortfolioProvider>
                     <AlertProvider>
                       <RootLayoutNav />
+                      <DisclaimerModal />
                     </AlertProvider>
                   </PortfolioProvider>
                 </FavoritesProvider>
