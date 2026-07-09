@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, AppStateStatus } from "react-native";
-import { BIST30 } from "@/constants/bistStocks";
+import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
 import { fetchBatchQuotes, isBistOpen, QuoteData } from "@/utils/yahooFinance";
 
 export interface StockQuote extends QuoteData {
@@ -51,13 +51,19 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setIsMarketOpen(isBistOpen());
     try {
-      const symbols = BIST30.map((s) => s.symbol);
-      const results = await fetchBatchQuotes(symbols);
+      const symbols = ALL_BIST_STOCKS.map((s) => s.symbol);
+      const CHUNK_SIZE = 25;
+      const chunks: string[][] = [];
+      for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
+        chunks.push(symbols.slice(i, i + CHUNK_SIZE));
+      }
+      const chunkResults = await Promise.all(chunks.map((c) => fetchBatchQuotes(c)));
+      const results = chunkResults.flat();
       const map: Record<string, StockQuote> = {};
       for (const q of results) {
         map[q.symbol] = q as StockQuote;
       }
-      setQuotes(map);
+      setQuotes((prev) => ({ ...prev, ...map }));
       const now = new Date();
       setLastUpdated(now);
       await AsyncStorage.setItem(

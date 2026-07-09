@@ -15,12 +15,40 @@ router.get("/bist/quotes", async (req, res) => {
       .split(",")
       .map((s) => `${s.trim().toUpperCase()}.IS`);
 
-    const result = await yf.quote(symbolList);
-    const arr = Array.isArray(result) ? result : [result];
-    const normalized = arr.map((q) => ({
-      ...q,
-      symbol: (q.symbol ?? "").replace(".IS", ""),
-    }));
+    const CHUNK_SIZE = 20;
+    const chunks: string[][] = [];
+    for (let i = 0; i < symbolList.length; i += CHUNK_SIZE) {
+      chunks.push(symbolList.slice(i, i + CHUNK_SIZE));
+    }
+
+    const chunkResults = await Promise.all(
+      chunks.map(async (chunk) => {
+        try {
+          const result = await yf.quote(chunk, {}, { validateResult: false });
+          return Array.isArray(result) ? result : [result];
+        } catch {
+          const perSymbol = await Promise.all(
+            chunk.map(async (sym) => {
+              try {
+                const r = await yf.quote(sym, {}, { validateResult: false });
+                return r;
+              } catch {
+                return null;
+              }
+            })
+          );
+          return perSymbol.filter(Boolean);
+        }
+      })
+    );
+
+    const arr = chunkResults.flat();
+    const normalized = arr
+      .filter((q): q is NonNullable<typeof q> => q != null)
+      .map((q) => ({
+        ...q,
+        symbol: (q.symbol ?? "").replace(".IS", ""),
+      }));
 
     res.json({ quoteResponse: { result: normalized, error: null } });
   } catch (err) {
