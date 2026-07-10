@@ -390,12 +390,13 @@ export function analyzeStock(
   let takeProfit = NaN;
   let riskRewardRatio = NaN;
   if (!isNaN(atrVal) && atrVal > 0) {
-    if (signal === "buy") {
-      stopLoss = currentPrice - atrVal * 1.5;
-      takeProfit = currentPrice + atrVal * 2.5;
-    } else if (signal === "sell") {
+    if (signal === "sell") {
       stopLoss = currentPrice + atrVal * 1.5;
       takeProfit = currentPrice - atrVal * 2.5;
+    } else {
+      /* buy veya neutral -> uzun (long) pozisyon referansı gösterilir */
+      stopLoss = currentPrice - atrVal * 1.5;
+      takeProfit = currentPrice + atrVal * 2.5;
     }
     if (!isNaN(stopLoss)) {
       const risk = Math.abs(currentPrice - stopLoss);

@@ -16,8 +16,6 @@ export const BIST30: StockMeta[] = [
   { symbol: "HALKB", name: "T. Halk Bankası", sector: "Bankacılık" },
   { symbol: "ISCTR", name: "T. İş Bankası (C)", sector: "Bankacılık" },
   { symbol: "KCHOL", name: "Koç Holding", sector: "Holding" },
-  { symbol: "KOZAA", name: "Koza Anadolu Metal", sector: "Madencilik" },
-  { symbol: "KOZAL", name: "Koza Altın İşletmeleri", sector: "Madencilik" },
   { symbol: "KRDMD", name: "Kardemir (D)", sector: "Metal" },
   { symbol: "MGROS", name: "Migros Ticaret", sector: "Perakende" },
   { symbol: "ODAS", name: "Odaş Elektrik", sector: "Enerji" },

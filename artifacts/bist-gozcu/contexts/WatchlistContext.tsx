@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BIST30 } from "@/constants/bistStocks";
+import { ALL_BIST_STOCKS, BIST30 } from "@/constants/bistStocks";
+
+const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol));
 
 interface WatchlistContextType {
   watchlist: string[];
@@ -29,8 +31,12 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) setWatchlist(JSON.parse(raw));
-      else setWatchlist(DEFAULT_WATCHLIST);
+      if (raw) {
+        const parsed: string[] = JSON.parse(raw);
+        setWatchlist(parsed.filter((s) => VALID_SYMBOLS.has(s)));
+      } else {
+        setWatchlist(DEFAULT_WATCHLIST);
+      }
       setReady(true);
     });
   }, []);

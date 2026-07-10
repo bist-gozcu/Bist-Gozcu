@@ -1,5 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+
+const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol));
 
 interface FavoritesContextType {
   favorites: string[];
@@ -24,7 +27,10 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) setFavorites(JSON.parse(raw));
+      if (raw) {
+        const parsed: string[] = JSON.parse(raw);
+        setFavorites(parsed.filter((s) => VALID_SYMBOLS.has(s)));
+      }
     });
   }, []);
 

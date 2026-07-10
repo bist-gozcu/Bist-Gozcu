@@ -1,5 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+
+const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol));
 
 export interface PortfolioEntry {
   id: string;
@@ -39,7 +42,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) setEntries(JSON.parse(raw));
+      if (raw) {
+        const parsed: PortfolioEntry[] = JSON.parse(raw);
+        setEntries(parsed.filter((e) => VALID_SYMBOLS.has(e.symbol)));
+      }
     });
   }, []);
 

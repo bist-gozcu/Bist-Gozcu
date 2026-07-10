@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, useWindowDimensions, Pressable } from "react-native";
 import Svg, {
   Path,
   Defs,
@@ -12,11 +12,18 @@ import Svg, {
 import { useColors } from "@/hooks/useColors";
 import { ChartRange } from "@/utils/yahooFinance";
 
+export type ChartType = "line" | "candle";
+
 interface PriceChartProps {
   closes: number[];
+  opens?: number[];
+  highs?: number[];
+  lows?: number[];
   volumes: number[];
   timestamps: number[];
   range: ChartRange;
+  chartType?: ChartType;
+  onToggleType?: () => void;
 }
 
 const CHART_H = 200;

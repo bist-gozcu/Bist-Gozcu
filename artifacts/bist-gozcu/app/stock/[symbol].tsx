@@ -663,7 +663,7 @@ export default function StockDetailScreen() {
         )}
 
         {/* Risk Management */}
-        {analysis && analysis.signal !== "neutral" && !isNaN(analysis.stopLoss) && (
+        {analysis && !isNaN(analysis.stopLoss) && (
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Risk Yönetimi (ATR Bazlı)</Text>
             <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>

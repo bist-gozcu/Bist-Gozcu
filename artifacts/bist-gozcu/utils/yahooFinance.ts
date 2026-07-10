@@ -26,6 +26,7 @@ export interface ChartResult {
 }
 
 export type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y";
+export type IntradayInterval = "5m" | "10m" | "15m" | "60m";
 
 import { Platform } from "react-native";
 
@@ -126,42 +127,77 @@ function parseChartJson(json: unknown, sym: string): ChartResult | null {
   };
 }
 
+function aggregateCandles(data: ChartResult, groupSize: number): ChartResult {
+  if (groupSize <= 1) return data;
+  const timestamps: number[] = [];
+  const closes: number[] = [];
+  const opens: number[] = [];
+  const highs: number[] = [];
+  const lows: number[] = [];
+  const volumes: number[] = [];
+
+  for (let i = 0; i < data.closes.length; i += groupSize) {
+    const end = Math.min(i + groupSize, data.closes.length);
+    const slice = { c: data.closes.slice(i, end), o: data.opens.slice(i, end), h: data.highs.slice(i, end), l: data.lows.slice(i, end), v: data.volumes.slice(i, end) };
+    const validIdx = slice.c.map((c, idx) => (c > 0 ? idx : -1)).filter((idx) => idx >= 0);
+    if (validIdx.length === 0) continue;
+    timestamps.push(data.timestamps[i]);
+    opens.push(slice.o[validIdx[0]] || slice.c[validIdx[0]]);
+    closes.push(slice.c[validIdx[validIdx.length - 1]]);
+    highs.push(Math.max(...validIdx.map((idx) => slice.h[idx] || slice.c[idx])));
+    lows.push(Math.min(...validIdx.map((idx) => (slice.l[idx] > 0 ? slice.l[idx] : slice.c[idx]))));
+    volumes.push(slice.v.reduce((s, v) => s + v, 0));
+  }
+
+  return { symbol: data.symbol, timestamps, closes, opens, highs, lows, volumes };
+}
+
 export async function fetchChartData(
   symbol: string,
-  range: ChartRange = "3mo"
+  range: ChartRange = "3mo",
+  intradayInterval?: IntradayInterval
 ): Promise<ChartResult | null> {
-  const interval = RANGE_INTERVAL[range];
+  const yahooInterval = range === "1d" && intradayInterval
+    ? (intradayInterval === "10m" ? "5m" : intradayInterval)
+    : RANGE_INTERVAL[range];
   const proxyBase = getProxyBase();
+
+  const finish = (result: ChartResult | null): ChartResult | null => {
+    if (result && range === "1d" && intradayInterval === "10m") {
+      return aggregateCandles(result, 2);
+    }
+    return result;
+  };
 
   if (proxyBase) {
     try {
-      const url = `${proxyBase}/bist/chart/${symbol}?range=${range}`;
+      const url = `${proxyBase}/bist/chart/${symbol}?range=${range}&interval=${yahooInterval}`;
       const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
         const result = parseChartJson(json, symbol);
-        if (result) return result;
+        if (result) return finish(result);
       }
     } catch {}
   }
 
   try {
-    const v8url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}.IS?interval=${interval}&range=${range}&includePrePost=false`;
+    const v8url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}.IS?interval=${yahooInterval}&range=${range}&includePrePost=false`;
     const res = await fetch(v8url, { headers: YF_HEADERS });
     if (res.ok) {
       const json = await res.json();
       const result = parseChartJson(json, symbol);
-      if (result) return result;
+      if (result) return finish(result);
     }
   } catch {}
 
   try {
     const crumb = await getCrumb();
     const crumbParam = crumb ? `&crumb=${encodeURIComponent(crumb)}` : "";
-    const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}.IS?interval=${interval}&range=${range}${crumbParam}`;
+    const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}.IS?interval=${yahooInterval}&range=${range}${crumbParam}`;
     const res = await fetch(url, { headers: YF_HEADERS });
     const json = await res.json();
-    return parseChartJson(json, symbol);
+    return finish(parseChartJson(json, symbol));
   } catch {
     return null;
   }
