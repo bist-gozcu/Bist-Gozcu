@@ -30,9 +30,19 @@ function IconMinusCircle({ color, size = 20 }: { color: string; size?: number })
 export default function FavoritesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { quotes, loading, refresh } = useStocks();
+  const { quotes, refresh } = useStocks();
   const { favorites, removeFavorite, reorder } = useFavorites();
   const [editMode, setEditMode] = useState(false);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+
+  const handleManualRefresh = useCallback(async () => {
+    setManualRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setManualRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleMove = useCallback((symbol: string, direction: -1 | 1) => {
     const from = favorites.indexOf(symbol);
@@ -121,8 +131,8 @@ export default function FavoritesScreen() {
           )}
           refreshControl={
             <RefreshControl
-              refreshing={loading}
-              onRefresh={refresh}
+              refreshing={manualRefreshing}
+              onRefresh={handleManualRefresh}
               tintColor={colors.primary}
             />
           }

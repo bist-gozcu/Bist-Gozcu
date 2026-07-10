@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -203,11 +203,21 @@ function PortfolioRow({ item, price, onDelete, onEdit, editMode, onMoveUp, onMov
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { quotes, loading, refresh } = useStocks();
+  const { quotes, refresh } = useStocks();
   const { entries, removeEntry, totalCost, totalValue, reorder } = usePortfolio();
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<PortfolioEntry | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+
+  const handleManualRefresh = useCallback(async () => {
+    setManualRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setManualRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleMove = (index: number, direction: -1 | 1) => {
     const to = index + direction;
@@ -292,7 +302,7 @@ export default function PortfolioScreen() {
         <FlatList
           data={entries}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}
+          refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={handleManualRefresh} tintColor={colors.primary} />}
           renderItem={({ item, index }) => (
             <PortfolioRow
               item={item}

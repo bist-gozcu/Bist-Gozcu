@@ -36,6 +36,16 @@ export default function MarketScreen() {
   const [sortKey, setSortKey] = useState<SortKey>("change");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [editMode, setEditMode] = useState(false);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+
+  const handleManualRefresh = useCallback(async () => {
+    setManualRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setManualRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleSort = (key: SortKey) => {
     if (editMode) return;
@@ -144,7 +154,7 @@ export default function MarketScreen() {
             </Text>
           </Pressable>
           {!editMode && (
-            <Pressable onPress={refresh} hitSlop={12} style={[styles.refreshBtn, { backgroundColor: colors.secondary }]}>
+            <Pressable onPress={handleManualRefresh} hitSlop={12} style={[styles.refreshBtn, { backgroundColor: colors.secondary }]}>
               <IconRefresh color={colors.mutedForeground} size={14} />
             </Pressable>
           )}
@@ -212,8 +222,8 @@ export default function MarketScreen() {
           }
           refreshControl={
             <RefreshControl
-              refreshing={loading}
-              onRefresh={refresh}
+              refreshing={manualRefreshing}
+              onRefresh={handleManualRefresh}
               tintColor={colors.primary}
             />
           }
