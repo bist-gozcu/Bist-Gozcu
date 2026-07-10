@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Line, Circle, Path } from "react-native-svg";
+import Svg, { Line, Circle } from "react-native-svg";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";

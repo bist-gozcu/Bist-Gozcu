@@ -1,7 +1,45 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
 import { useStocks } from "./StockContext";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+async function ensureNotificationPermission() {
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status === "granted") return true;
+  const { status: requested } = await Notifications.requestPermissionsAsync();
+  return requested === "granted";
+}
+
+async function fireLocalNotification(alert: PriceAlert, price: number) {
+  const granted = await ensureNotificationPermission();
+  if (!granted) return;
+  const directionText: Record<AlertType, string> = {
+    above: "üzerine çıktı",
+    below: "altına düştü",
+    tp: "kar al seviyesine ulaştı",
+    sl: "zarar durdur seviyesine ulaştı",
+  };
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `${alert.symbol} uyarısı tetiklendi`,
+      body: `${alert.symbol} ₺${price.toFixed(2)} ile hedef ₺${alert.targetPrice.toFixed(2)} ${directionText[alert.alertType]}.`,
+      sound: Platform.OS === "ios" ? "default" : undefined,
+    },
+    trigger: null,
+  });
+}
 
 export type AlertType = "above" | "below" | "tp" | "sl";
 
@@ -74,6 +112,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
         const updated = { ...alert, triggered: true, triggeredAt: Date.now() };
         newTriggered.push(updated);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        fireLocalNotification(updated, price);
         return updated;
       }
       return alert;
