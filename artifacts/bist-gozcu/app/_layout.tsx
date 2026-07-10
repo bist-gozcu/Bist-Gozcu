@@ -18,6 +18,7 @@ import DisclaimerModal from "@/components/DisclaimerModal";
 import { StockProvider } from "@/contexts/StockContext";
 import { PortfolioProvider } from "@/contexts/PortfolioContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
+import { WatchlistProvider } from "@/contexts/WatchlistContext";
 import { AlertProvider } from "@/contexts/AlertContext";
 
 SplashScreen.preventAutoHideAsync();
@@ -63,12 +64,14 @@ export default function RootLayout() {
             <KeyboardProvider>
               <StockProvider>
                 <FavoritesProvider>
-                  <PortfolioProvider>
-                    <AlertProvider>
-                      <RootLayoutNav />
-                      <DisclaimerModal />
-                    </AlertProvider>
-                  </PortfolioProvider>
+                  <WatchlistProvider>
+                    <PortfolioProvider>
+                      <AlertProvider>
+                        <RootLayoutNav />
+                        <DisclaimerModal />
+                      </AlertProvider>
+                    </PortfolioProvider>
+                  </WatchlistProvider>
                 </FavoritesProvider>
               </StockProvider>
             </KeyboardProvider>

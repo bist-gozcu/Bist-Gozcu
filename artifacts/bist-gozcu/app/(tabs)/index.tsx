@@ -10,14 +10,19 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Swipeable } from "react-native-gesture-handler";
+import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
-import { BIST30 } from "@/constants/bistStocks";
+import { useWatchlist } from "@/contexts/WatchlistContext";
 import StockRow from "@/components/StockRow";
 import {
   IconRefresh,
   IconChevronUp,
   IconChevronDown,
+  IconArrowUp,
+  IconArrowDown,
+  IconTrash,
 } from "@/components/TabIcon";
 
 type SortKey = "name" | "price" | "change" | "volume";
@@ -27,35 +32,53 @@ export default function MarketScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { quotes, loading, refresh, lastUpdated, isMarketOpen } = useStocks();
+  const { watchlist, removeFromWatchlist, reorder } = useWatchlist();
   const [sortKey, setSortKey] = useState<SortKey>("change");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [editMode, setEditMode] = useState(false);
 
   const handleSort = (key: SortKey) => {
+    if (editMode) return;
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("desc"); }
   };
 
-  const sorted = [...BIST30].sort((a, b) => {
-    const qa = quotes[a.symbol];
-    const qb = quotes[b.symbol];
-    let va = 0, vb = 0;
-    if (sortKey === "name") {
-      const c = a.symbol.localeCompare(b.symbol);
-      return sortDir === "asc" ? c : -c;
-    }
-    if (sortKey === "price") { va = qa?.regularMarketPrice ?? 0; vb = qb?.regularMarketPrice ?? 0; }
-    if (sortKey === "change") { va = qa?.regularMarketChangePercent ?? 0; vb = qb?.regularMarketChangePercent ?? 0; }
-    if (sortKey === "volume") { va = qa?.regularMarketVolume ?? 0; vb = qb?.regularMarketVolume ?? 0; }
-    return sortDir === "asc" ? va - vb : vb - va;
-  });
+  const listData = editMode
+    ? watchlist
+    : [...watchlist].sort((a, b) => {
+        const qa = quotes[a];
+        const qb = quotes[b];
+        let va = 0, vb = 0;
+        if (sortKey === "name") {
+          const c = a.localeCompare(b);
+          return sortDir === "asc" ? c : -c;
+        }
+        if (sortKey === "price") { va = qa?.regularMarketPrice ?? 0; vb = qb?.regularMarketPrice ?? 0; }
+        if (sortKey === "change") { va = qa?.regularMarketChangePercent ?? 0; vb = qb?.regularMarketChangePercent ?? 0; }
+        if (sortKey === "volume") { va = qa?.regularMarketVolume ?? 0; vb = qb?.regularMarketVolume ?? 0; }
+        return sortDir === "asc" ? va - vb : vb - va;
+      });
 
   const formatTime = (d: Date) =>
     d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 
-  const upCount = BIST30.filter((s) => (quotes[s.symbol]?.regularMarketChangePercent ?? 0) > 0).length;
-  const downCount = BIST30.filter((s) => (quotes[s.symbol]?.regularMarketChangePercent ?? 0) < 0).length;
+  const upCount = watchlist.filter((s) => (quotes[s]?.regularMarketChangePercent ?? 0) > 0).length;
+  const downCount = watchlist.filter((s) => (quotes[s]?.regularMarketChangePercent ?? 0) < 0).length;
 
   const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
+
+  const handleMove = useCallback((symbol: string, direction: -1 | 1) => {
+    const from = watchlist.indexOf(symbol);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= watchlist.length) return;
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    reorder(from, to);
+  }, [watchlist, reorder]);
+
+  const handleRemove = useCallback((symbol: string) => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    removeFromWatchlist(symbol);
+  }, [removeFromWatchlist]);
 
   const SortBtn = ({ label, k }: { label: string; k: SortKey }) => (
     <Pressable onPress={() => handleSort(k)} style={styles.sortBtn}>
@@ -67,6 +90,16 @@ export default function MarketScreen() {
           ? <IconChevronDown color={colors.primary} size={11} />
           : <IconChevronUp color={colors.primary} size={11} />
       )}
+    </Pressable>
+  );
+
+  const renderRightActions = (symbol: string) => (
+    <Pressable
+      style={[styles.swipeDelete, { backgroundColor: colors.down }]}
+      onPress={() => handleRemove(symbol)}
+    >
+      <IconTrash color="#fff" size={18} />
+      <Text style={styles.swipeDeleteText}>Sil</Text>
     </Pressable>
   );
 
@@ -89,7 +122,7 @@ export default function MarketScreen() {
           </View>
         </View>
         <View style={styles.headerRight}>
-          {Object.keys(quotes).length > 0 && (
+          {Object.keys(quotes).length > 0 && !editMode && (
             <View style={styles.marketSummary}>
               <View style={styles.summaryChip}>
                 <Text style={[styles.summaryNum, { color: colors.up }]}>{upCount}</Text>
@@ -101,21 +134,41 @@ export default function MarketScreen() {
               </View>
             </View>
           )}
-          <Pressable onPress={refresh} hitSlop={12} style={[styles.refreshBtn, { backgroundColor: colors.secondary }]}>
-            <IconRefresh color={colors.mutedForeground} size={14} />
+          <Pressable
+            onPress={() => setEditMode((v) => !v)}
+            hitSlop={10}
+            style={[styles.editBtn, { backgroundColor: editMode ? `${colors.primary}20` : colors.secondary }]}
+          >
+            <Text style={[styles.editBtnText, { color: editMode ? colors.primary : colors.mutedForeground }]}>
+              {editMode ? "Tamam" : "Düzenle"}
+            </Text>
           </Pressable>
+          {!editMode && (
+            <Pressable onPress={refresh} hitSlop={12} style={[styles.refreshBtn, { backgroundColor: colors.secondary }]}>
+              <IconRefresh color={colors.mutedForeground} size={14} />
+            </Pressable>
+          )}
         </View>
       </View>
 
       {/* Sort row */}
-      <View style={[styles.sortRow, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
-        <SortBtn label="Sembol" k="name" />
-        <View style={styles.spacer} />
-        <SortBtn label="Hacim" k="volume" />
-        <SortBtn label="Fiyat" k="price" />
-        <SortBtn label="Değişim" k="change" />
-        <View style={{ width: 28 }} />
-      </View>
+      {!editMode && (
+        <View style={[styles.sortRow, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+          <SortBtn label="Sembol" k="name" />
+          <View style={styles.spacer} />
+          <SortBtn label="Hacim" k="volume" />
+          <SortBtn label="Fiyat" k="price" />
+          <SortBtn label="Değişim" k="change" />
+          <View style={{ width: 28 }} />
+        </View>
+      )}
+      {editMode && (
+        <View style={[styles.editHint, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+          <Text style={[styles.editHintText, { color: colors.mutedForeground }]}>
+            Sıralamak için ok tuşlarını kullanın, silmek için sola kaydırın
+          </Text>
+        </View>
+      )}
 
       {loading && Object.keys(quotes).length === 0 ? (
         <View style={styles.center}>
@@ -124,14 +177,39 @@ export default function MarketScreen() {
         </View>
       ) : (
         <FlatList
-          data={sorted}
-          keyExtractor={(item) => item.symbol}
-          renderItem={({ item }) => (
-            <StockRow
-              symbol={item.symbol}
-              quote={quotes[item.symbol]}
-            />
-          )}
+          data={listData}
+          keyExtractor={(item) => item}
+          renderItem={({ item, index }) =>
+            editMode ? (
+              <Swipeable renderRightActions={() => renderRightActions(item)} overshootRight={false}>
+                <View style={[styles.rowWrap, { backgroundColor: colors.card }]}>
+                  <View style={styles.rowFlex}>
+                    <StockRow symbol={item} quote={quotes[item]} showFavoriteBtn={false} />
+                  </View>
+                  <View style={styles.reorderBtns}>
+                    <Pressable
+                      onPress={() => handleMove(item, -1)}
+                      disabled={index === 0}
+                      hitSlop={6}
+                      style={styles.reorderBtn}
+                    >
+                      <IconArrowUp color={index === 0 ? colors.border : colors.mutedForeground} size={16} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleMove(item, 1)}
+                      disabled={index === listData.length - 1}
+                      hitSlop={6}
+                      style={styles.reorderBtn}
+                    >
+                      <IconArrowDown color={index === listData.length - 1 ? colors.border : colors.mutedForeground} size={16} />
+                    </Pressable>
+                  </View>
+                </View>
+              </Swipeable>
+            ) : (
+              <StockRow symbol={item} quote={quotes[item]} />
+            )
+          }
           refreshControl={
             <RefreshControl
               refreshing={loading}
@@ -169,6 +247,8 @@ const styles = StyleSheet.create({
   summaryNum: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   summaryArrow: { fontSize: 9 },
   refreshBtn: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  editBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  editBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   sortRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -179,6 +259,23 @@ const styles = StyleSheet.create({
   sortBtn: { flexDirection: "row", alignItems: "center", gap: 2, paddingHorizontal: 4 },
   sortLabel: { fontSize: 11, fontFamily: "Inter_500Medium" },
   spacer: { flex: 1 },
+  editHint: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  editHintText: { fontSize: 11, fontFamily: "Inter_400Regular" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  rowWrap: { flexDirection: "row", alignItems: "center" },
+  rowFlex: { flex: 1 },
+  reorderBtns: { flexDirection: "column", paddingHorizontal: 10, gap: 6 },
+  reorderBtn: { padding: 2 },
+  swipeDelete: {
+    width: 76,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  swipeDeleteText: { color: "#fff", fontSize: 11, fontFamily: "Inter_600SemiBold" },
 });

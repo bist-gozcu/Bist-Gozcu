@@ -18,6 +18,7 @@ interface PortfolioContextType {
   getEntry: (symbol: string) => PortfolioEntry | undefined;
   totalCost: (prices: Record<string, number>) => number;
   totalValue: (prices: Record<string, number>) => number;
+  reorder: (from: number, to: number) => void;
 }
 
 const PortfolioContext = createContext<PortfolioContextType>({
@@ -28,6 +29,7 @@ const PortfolioContext = createContext<PortfolioContextType>({
   getEntry: () => undefined,
   totalCost: () => 0,
   totalValue: () => 0,
+  reorder: () => {},
 });
 
 const STORAGE_KEY = "bist_portfolio";
@@ -74,8 +76,15 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }, 0);
   }, [entries]);
 
+  const reorder = useCallback((from: number, to: number) => {
+    const newList = [...entries];
+    const [moved] = newList.splice(from, 1);
+    newList.splice(to, 0, moved);
+    save(newList);
+  }, [entries, save]);
+
   return (
-    <PortfolioContext.Provider value={{ entries, addEntry, updateEntry, removeEntry, getEntry, totalCost, totalValue }}>
+    <PortfolioContext.Provider value={{ entries, addEntry, updateEntry, removeEntry, getEntry, totalCost, totalValue, reorder }}>
       {children}
     </PortfolioContext.Provider>
   );

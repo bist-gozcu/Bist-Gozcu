@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   FlatList,
   Platform,
@@ -10,11 +10,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Line, Circle, Path } from "react-native-svg";
+import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import StockRow from "@/components/StockRow";
 import EmptyState from "@/components/EmptyState";
+import { IconArrowUp, IconArrowDown } from "@/components/TabIcon";
 
 function IconMinusCircle({ color, size = 20 }: { color: string; size?: number }) {
   return (
@@ -25,22 +27,20 @@ function IconMinusCircle({ color, size = 20 }: { color: string; size?: number })
   );
 }
 
-function IconGripLines({ color, size = 18 }: { color: string; size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Line x1="4" y1="8" x2="20" y2="8" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      <Line x1="4" y1="12" x2="20" y2="12" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      <Line x1="4" y1="16" x2="20" y2="16" stroke={color} strokeWidth="2" strokeLinecap="round" />
-    </Svg>
-  );
-}
-
 export default function FavoritesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { quotes, loading, refresh } = useStocks();
-  const { favorites, removeFavorite } = useFavorites();
+  const { favorites, removeFavorite, reorder } = useFavorites();
   const [editMode, setEditMode] = useState(false);
+
+  const handleMove = useCallback((symbol: string, direction: -1 | 1) => {
+    const from = favorites.indexOf(symbol);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= favorites.length) return;
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    reorder(from, to);
+  }, [favorites, reorder]);
 
   const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
 
@@ -79,7 +79,7 @@ export default function FavoritesScreen() {
         <FlatList
           data={favorites}
           keyExtractor={(item) => item}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <View style={styles.rowWrap}>
               {editMode && (
                 <Pressable
@@ -98,8 +98,23 @@ export default function FavoritesScreen() {
                 />
               </View>
               {editMode && (
-                <View style={styles.dragHandle}>
-                  <IconGripLines color={colors.mutedForeground} size={18} />
+                <View style={styles.reorderBtns}>
+                  <Pressable
+                    onPress={() => handleMove(item, -1)}
+                    disabled={index === 0}
+                    hitSlop={6}
+                    style={styles.reorderBtn}
+                  >
+                    <IconArrowUp color={index === 0 ? colors.border : colors.mutedForeground} size={16} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleMove(item, 1)}
+                    disabled={index === favorites.length - 1}
+                    hitSlop={6}
+                    style={styles.reorderBtn}
+                  >
+                    <IconArrowDown color={index === favorites.length - 1 ? colors.border : colors.mutedForeground} size={16} />
+                  </Pressable>
                 </View>
               )}
             </View>
@@ -139,5 +154,6 @@ const styles = StyleSheet.create({
   rowWrap: { flexDirection: "row", alignItems: "center" },
   rowFlex: { flex: 1 },
   deleteBtn: { paddingLeft: 14, paddingRight: 4 },
-  dragHandle: { paddingHorizontal: 12 },
+  reorderBtns: { flexDirection: "column", paddingHorizontal: 10, gap: 6 },
+  reorderBtn: { padding: 2 },
 });

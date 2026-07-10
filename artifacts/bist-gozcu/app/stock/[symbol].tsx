@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
+import { useWatchlist } from "@/contexts/WatchlistContext";
 import { useAlerts } from "@/contexts/AlertContext";
 import { usePortfolio } from "@/contexts/PortfolioContext";
 import { fetchChartData, ChartResult, ChartRange, getMarketSession } from "@/utils/yahooFinance";
@@ -131,6 +132,7 @@ export default function StockDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const { quotes } = useStocks();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites();
+  const { isWatched, addToWatchlist } = useWatchlist();
   const { alerts } = useAlerts();
   const { addEntry, getEntry, updateEntry } = usePortfolio();
   const [chart, setChart] = useState<ChartResult | null>(null);
@@ -183,6 +185,14 @@ export default function StockDetailScreen() {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (fav) removeFavorite(symbol ?? "");
     else addFavorite(symbol ?? "");
+  };
+
+  const watched = isWatched(symbol ?? "");
+
+  const handleTakibeAl = () => {
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!fav) addFavorite(symbol ?? "");
+    addToWatchlist(symbol ?? "");
   };
 
   const handleRangeChange = (r: ChartRange) => {
@@ -758,6 +768,15 @@ export default function StockDetailScreen() {
             {existingEntry ? "Pozisyonu Güncelle" : "Portföye Ekle"}
           </Text>
         </Pressable>
+        <Pressable
+          style={[styles.watchBtn, { backgroundColor: watched ? `${colors.up}18` : colors.secondary, borderColor: watched ? `${colors.up}40` : colors.border }]}
+          onPress={handleTakibeAl}
+          disabled={watched}
+        >
+          <Text style={[styles.watchBtnText, { color: watched ? colors.up : colors.mutedForeground }]}>
+            {watched ? "Piyasa Listesinde ✓" : "Takibe Al"}
+          </Text>
+        </Pressable>
       </View>
 
       {/* ── Portfolio Modal ── */}
@@ -1041,6 +1060,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   addBtnText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  watchBtn: {
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: "center",
+    marginTop: 8,
+    borderWidth: 1,
+  },
+  watchBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",

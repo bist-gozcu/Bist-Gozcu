@@ -19,7 +19,7 @@ import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { usePortfolio, PortfolioEntry } from "@/contexts/PortfolioContext";
 import EmptyState from "@/components/EmptyState";
-import { IconX, IconPlus, IconTrash } from "@/components/TabIcon";
+import { IconX, IconPlus, IconTrash, IconArrowUp, IconArrowDown } from "@/components/TabIcon";
 
 function AddModal({
   visible,
@@ -131,11 +131,16 @@ function AddModal({
   );
 }
 
-function PortfolioRow({ item, price, onDelete, onEdit }: {
+function PortfolioRow({ item, price, onDelete, onEdit, editMode, onMoveUp, onMoveDown, canMoveUp, canMoveDown }: {
   item: PortfolioEntry;
   price: number;
   onDelete: () => void;
   onEdit: () => void;
+  editMode: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
 }) {
   const colors = useColors();
   const router = useRouter();
@@ -152,7 +157,7 @@ function PortfolioRow({ item, price, onDelete, onEdit }: {
         styles.entryRow,
         { backgroundColor: pressed ? colors.accent : colors.card, borderBottomColor: colors.border },
       ]}
-      onPress={() => router.push({ pathname: "/stock/[symbol]", params: { symbol: item.symbol } })}
+      onPress={() => !editMode && router.push({ pathname: "/stock/[symbol]", params: { symbol: item.symbol } })}
       onLongPress={onEdit}
     >
       <View style={[styles.entryColorBar, { backgroundColor: pnlColor }]} />
@@ -177,9 +182,20 @@ function PortfolioRow({ item, price, onDelete, onEdit }: {
           <Text style={[styles.entryNote, { color: colors.mutedForeground }]}>{item.note}</Text>
         ) : null}
       </View>
-      <Pressable onPress={onDelete} hitSlop={10} style={styles.deleteBtn}>
-        <IconTrash color={colors.mutedForeground} size={16} />
-      </Pressable>
+      {editMode ? (
+        <View style={styles.reorderBtns}>
+          <Pressable onPress={onMoveUp} disabled={!canMoveUp} hitSlop={6} style={styles.reorderBtn}>
+            <IconArrowUp color={canMoveUp ? colors.mutedForeground : colors.border} size={16} />
+          </Pressable>
+          <Pressable onPress={onMoveDown} disabled={!canMoveDown} hitSlop={6} style={styles.reorderBtn}>
+            <IconArrowDown color={canMoveDown ? colors.mutedForeground : colors.border} size={16} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable onPress={onDelete} hitSlop={10} style={styles.deleteBtn}>
+          <IconTrash color={colors.mutedForeground} size={16} />
+        </Pressable>
+      )}
     </Pressable>
   );
 }
@@ -188,9 +204,17 @@ export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { quotes, loading, refresh } = useStocks();
-  const { entries, removeEntry, totalCost, totalValue } = usePortfolio();
+  const { entries, removeEntry, totalCost, totalValue, reorder } = usePortfolio();
   const [showModal, setShowModal] = useState(false);
   const [editEntry, setEditEntry] = useState<PortfolioEntry | null>(null);
+  const [editMode, setEditMode] = useState(false);
+
+  const handleMove = (index: number, direction: -1 | 1) => {
+    const to = index + direction;
+    if (to < 0 || to >= entries.length) return;
+    if (Platform.OS !== "web") Haptics.selectionAsync();
+    reorder(index, to);
+  };
 
   const prices: Record<string, number> = {};
   for (const [sym, q] of Object.entries(quotes)) {
@@ -216,8 +240,19 @@ export default function PortfolioScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }, topPaddingStyle]}>
       {/* Header */}
-      <View style={[styles.pageHeader, { borderBottomColor: colors.border }]}>
+      <View style={[styles.pageHeader, styles.pageHeaderRow, { borderBottomColor: colors.border }]}>
         <Text style={[styles.pageTitle, { color: colors.foreground }]}>Portföy</Text>
+        {entries.length > 0 && (
+          <Pressable
+            onPress={() => setEditMode((v) => !v)}
+            hitSlop={10}
+            style={[styles.editBtn, { backgroundColor: editMode ? `${colors.primary}20` : colors.secondary }]}
+          >
+            <Text style={[styles.editBtnText, { color: editMode ? colors.primary : colors.mutedForeground }]}>
+              {editMode ? "Tamam" : "Sırala"}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Summary card */}
@@ -258,12 +293,17 @@ export default function PortfolioScreen() {
           data={entries}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <PortfolioRow
               item={item}
               price={prices[item.symbol] ?? item.avgPrice}
               onDelete={() => handleDelete(item)}
               onEdit={() => { setEditEntry(item); setShowModal(true); }}
+              editMode={editMode}
+              onMoveUp={() => handleMove(index, -1)}
+              onMoveDown={() => handleMove(index, 1)}
+              canMoveUp={index > 0}
+              canMoveDown={index < entries.length - 1}
             />
           )}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
@@ -303,6 +343,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   pageTitle: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  pageHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  editBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  editBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  reorderBtns: { flexDirection: "column", gap: 6, paddingLeft: 8 },
+  reorderBtn: { padding: 2 },
   summaryCard: {
     margin: 12,
     borderRadius: 16,
