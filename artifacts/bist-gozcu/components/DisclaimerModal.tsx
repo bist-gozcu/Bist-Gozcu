@@ -36,8 +36,9 @@ export default function DisclaimerModal() {
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.title, { color: colors.foreground }]}>Uyarı</Text>
           <Text style={[styles.body, { color: colors.mutedForeground }]}>
-            BIST Gözcü, borsa verilerini ve teknik göstergeleri bilgilendirme amacıyla sunan bir
-            deneyim uygulamasıdır. Uygulamadaki fiyatlar, sinyaller ve analizler{" "}
+            BIST Gözcü, SPK düzenlemeleri kapsamında 15 dakika gecikmeli borsa verilerini ve teknik
+            göstergeleri bilgilendirme amacıyla sunan bir deneyim uygulamasıdır. Uygulamadaki
+            fiyatlar, sinyaller ve analizler{" "}
             <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold" }}>
               yatırım tavsiyesi değildir
             </Text>

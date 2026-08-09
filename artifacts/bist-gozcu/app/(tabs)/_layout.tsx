@@ -10,6 +10,7 @@ import {
   IconBriefcase,
   IconSearch,
   IconBell,
+  IconTrendingUp,
 } from "@/components/TabIcon";
 
 function TabBadge({ count }: { count: number }) {
@@ -71,6 +72,14 @@ export default function TabLayout() {
           title: "Favoriler",
           tabBarLabel: "Favoriler",
           tabBarIcon: ({ color, focused }) => <IconStar color={color} size={22} filled={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="treyd"
+        options={{
+          title: "Treyd",
+          tabBarLabel: "Treyd",
+          tabBarIcon: ({ color }) => <IconTrendingUp color={color} size={22} />,
         }}
       />
       <Tabs.Screen

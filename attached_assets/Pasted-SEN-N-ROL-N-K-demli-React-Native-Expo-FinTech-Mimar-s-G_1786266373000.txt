@@ -1,0 +1,63 @@
+SENİN ROLÜN: Kıdemli React Native Expo + FinTech Mimarısı.
+GÖREVİN: Borsa İstanbul için tasarlanan %100 Serverless, 15dk gecikmeli ve 15dk AsyncStorage cache mimarili uygulamanın 8 dosyasının TAM ve EKSİKSİZ TypeScript kodlarını üretmek.
+
+[ÜRETİM VE TESLİMAT KURALLARI]
+1. Expo SDK 51 + TypeScript + TanStack Query v5 + React Native Gesture Handler standartlarına %100 uyum.
+2. Hiçbir dosyada satır atlama, "..." veya placeholder bırakma. 8 dosyanın tamamının kodunu eksiksiz ver.
+3. `any` tipi kesinlikle yasak. Tüm interface ve type tanımları açıkça yapılmalıdır.
+4. Kodların başında dosya yolu yorum satırı olarak yer almalıdır (Örn: // Dosya: services/collectApi.ts).
+
+---
+
+DOSYA DETAYLARI VE DÜZELTME GEREKSİNİMLERİ:
+
+1. utils/seansKontrol.ts
+   - `export const isPiyasaAcik = (): boolean`
+   - Türkiye saatiyle (UTC+3) Hafta içi 10:00 - 18:00 arası `true`, hafta sonu ve seans dışı saatlerde `false` dönsün.
+
+2. services/collectApi.ts
+   - Interface'ler:
+     type Hisse = { sembol: string; fiyat: number; degisimYuzde: number; hacim: number; }
+     type TemelVeri = { fk: number | null; pddd: number | null; }
+   - `parseTRNumber(value: string | number | undefined | null): number` yardımcı fonksiyonunu yaz. "1.250.400,50" -> 1250400.50 regex dönüşümünü güvenli yap (NaN engelle).
+   - `getBist100(): Promise<Hisse[]>` fonksiyonunda CollectAPI'den veriyi çek ve tüm sayısal alanları `parseTRNumber` ile dönüştür.
+   - `fetchHisseTemelDetay(sembol: string): Promise<TemelVeri>` fonksiyonuna güvenli mock/fallback yapısı kur ({ fk: null, pddd: null }).
+
+3. services/treydMotoru.ts
+   - Interface:
+     type TreydSinyali = { sembol: string; fiyat: number; degisimYuzde: number; hacim: number; skor: number; etiket: 'GÜÇLÜ ALIM' | 'MOMENTUM KIRILIMI' | 'TAKİP LİSTESİ'; }
+   - `getTop6Treyd(hisseler: Hisse[]): TreydSinyali[]` fonksiyonu yaz.
+   - Algoritma: 
+     Adım 1: BİST100 listesinin Medyan Hacmini hesapla (`calculateMedian`).
+     Adım 2: `skor = (degisimYuzde * 0.6) + ((hacim / medyanHacim) * 0.4)`
+     Adım 3: Sadece `degisimYuzde > 0` ve `skor > 0` olan pozitif trenddeki hisseleri skoruna göre büyükten küçüğe sırala, İLK 6'sını dön.
+
+4. hooks/useMarketData.ts
+   - `useMarketData(endpoint: string)` hook'u oluştur.
+   - TanStack Query v5 `useQuery` kullan (`staleTime: 15*60*1000`, `gcTime: 15*60*1000`).
+   - `queryFn`: Önce AsyncStorage'da 15 dakikayı geçmemiş geçerli cache var mı bak. Var ise onu dön.
+   - Yoksa API'ye istek at. HTTP 429 veya Ağ Hatası alırsan `catch` bloğunda AsyncStorage'daki son başarılı veriyi dön, cache de yoksa hata fırlat.
+   - Return objesine önbelleği silip zorla yenileme yapan `manuelYenile: () => Promise<void>` fonksiyonunu ekle.
+
+5. components/DecisionCard.tsx
+   - Props: `sembol: string`, `skor: number`, `guncelFiyat: number`, `hedefFiyat?: number`, `stopFiyat?: number`, `etiket?: string`
+   - ProximityBar hesaplarken 0'a bölünme ve `undefined` durumlarını kontrol et (`if(!hedefFiyat || !stopFiyat || guncelFiyat === 0) return null`). Bar gösterilemiyorsa sadece etiket ve skoru göster.
+
+6. app/(tabs)/favoriler.tsx
+   - En dışta `<GestureHandlerRootView style={{ flex: 1 }}>` sarmalaması ekle.
+   - `react-native-draggable-flatlist` ile sıralanabilir liste oluştur.
+   - `onDragEnd` olayında yeni sırayı state'e güncelle ve konsola/Firestore mock fonksiyonuna gönder.
+   - `ListEmptyComponent` ekle.
+
+7. app/(tabs)/treyd.tsx
+   - `useMarketData('bist100')` ile veriyi çek.
+   - `isPiyasaAcik()` kontrolü yapıp seans durum banner'ı göster.
+   - Veri yüklendiğinde otomatik ilk taramayı çalıştır, ayrıca "Taramayı Başlat" butonu ile manuel tetiklemeye izin ver.
+   - `FlatList` ile İlk 6 hisseyi sıralama numarası (#1, #2...) ve skor etiketiyle birlikte listele.
+
+8. app/_layout.tsx
+   - En dışta `<GestureHandlerRootView style={{ flex: 1 }}>` ve `<QueryClientProvider>` sarmalamalarını yap.
+   - AsyncStorage 'disclaimerAccepted' kontrolü yap, `true` değilse SPK 15dk Gecikmeli Veri ve Yasal Uyarı Modalı göster.
+   - Expo Router `<Stack>` navigasyonunu kur.
+
+Lütfen bu 8 dosyanın TAM ve ÇALIŞIR haldeki TypeScript kodlarını tek seferde üret.

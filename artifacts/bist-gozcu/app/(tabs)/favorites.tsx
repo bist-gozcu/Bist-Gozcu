@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import {
-  FlatList,
   Platform,
   Pressable,
   RefreshControl,
@@ -8,6 +7,10 @@ import {
   Text,
   View,
 } from "react-native";
+import DraggableFlatList, {
+  RenderItemParams,
+} from "react-native-draggable-flatlist";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Line, Circle } from "react-native-svg";
 import * as Haptics from "expo-haptics";
@@ -16,7 +19,6 @@ import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import StockRow from "@/components/StockRow";
 import EmptyState from "@/components/EmptyState";
-import { IconArrowUp, IconArrowDown } from "@/components/TabIcon";
 
 function IconMinusCircle({ color, size = 20 }: { color: string; size?: number }) {
   return (
@@ -44,18 +46,11 @@ export default function FavoritesScreen() {
     }
   }, [refresh]);
 
-  const handleMove = useCallback((symbol: string, direction: -1 | 1) => {
-    const from = favorites.indexOf(symbol);
-    const to = from + direction;
-    if (from < 0 || to < 0 || to >= favorites.length) return;
-    if (Platform.OS !== "web") Haptics.selectionAsync();
-    reorder(from, to);
-  }, [favorites, reorder]);
-
   const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }, topPaddingStyle]}>
+    <GestureHandlerRootView style={styles.root}>
+      <View style={[styles.container, { backgroundColor: colors.background }, topPaddingStyle]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <View style={styles.headerLeft}>
@@ -86,11 +81,21 @@ export default function FavoritesScreen() {
           subtitle="Piyasa veya Arama ekranından yıldıza basarak hisse ekleyin"
         />
       ) : (
-        <FlatList
+        <DraggableFlatList
           data={favorites}
           keyExtractor={(item) => item}
-          renderItem={({ item, index }) => (
-            <View style={styles.rowWrap}>
+          activationDistance={editMode ? 0 : 12}
+          onDragEnd={({ from, to }) => {
+            if (editMode && from !== to) reorder(from, to);
+          }}
+          renderItem={({ item, drag, isActive }: RenderItemParams<string>) => (
+            <Pressable
+              onLongPress={() => {
+                if (editMode) drag();
+              }}
+              disabled={!editMode}
+              style={[styles.rowWrap, isActive && { backgroundColor: colors.accent }]}
+            >
               {editMode && (
                 <Pressable
                   onPress={() => removeFavorite(item)}
@@ -107,27 +112,7 @@ export default function FavoritesScreen() {
                   showFavoriteBtn={!editMode}
                 />
               </View>
-              {editMode && (
-                <View style={styles.reorderBtns}>
-                  <Pressable
-                    onPress={() => handleMove(item, -1)}
-                    disabled={index === 0}
-                    hitSlop={6}
-                    style={styles.reorderBtn}
-                  >
-                    <IconArrowUp color={index === 0 ? colors.border : colors.mutedForeground} size={16} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleMove(item, 1)}
-                    disabled={index === favorites.length - 1}
-                    hitSlop={6}
-                    style={styles.reorderBtn}
-                  >
-                    <IconArrowDown color={index === favorites.length - 1 ? colors.border : colors.mutedForeground} size={16} />
-                  </Pressable>
-                </View>
-              )}
-            </View>
+            </Pressable>
           )}
           refreshControl={
             <RefreshControl
@@ -140,11 +125,13 @@ export default function FavoritesScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
-    </View>
+      </View>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   container: { flex: 1 },
   header: {
     flexDirection: "row",
