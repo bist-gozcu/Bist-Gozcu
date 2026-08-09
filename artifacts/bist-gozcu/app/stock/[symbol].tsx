@@ -25,19 +25,14 @@ import { fetchChartData, ChartResult, ChartRange, getMarketSession } from "@/uti
 import {
   analyzeStock,
   AnalysisResult,
+  alma,
+  atr,
+  getActionAdvice,
   macd,
+  moneyFlowIndex,
   rsi,
   sma,
-  moneyFlowIndex,
-  atr,
-  stochastic,
-  aroon,
-  detectCandlePatterns,
-  getOverallCandleDirection,
-  CandlePattern,
-  getActionAdvice,
-  backtestSignals,
-  BacktestResult,
+  tilsonT3,
 } from "@/utils/indicators";
 import { getStockMeta } from "@/constants/bistStocks";
 import SignalBadge from "@/components/SignalBadge";
@@ -76,17 +71,9 @@ const INDICATOR_INFO: Record<string, { title: string; body: string }> = {
     title: "RSI (Göreceli Güç Endeksi)",
     body: "Fiyatın son 14 günde ne kadar hızlı yükselip düştüğünü ölçer (0-100). 30'un altı 'aşırı satım' (tepki alımı gelebilir), 70'in üstü 'aşırı alım' (kâr satışı gelebilir) anlamına gelir. Tek başına al/sat kararı için yeterli değildir, trend yönüyle birlikte değerlendirilmelidir.",
   },
-  "Stoch %K": {
-    title: "Stokastik Osilatör (%K)",
-    body: "Kapanış fiyatının son 14 günün en yüksek-en düşük aralığına göre nerede olduğunu gösterir (0-100). 20'nin altı aşırı satım, 80'in üstü aşırı alım bölgesidir. %K çizgisinin %D çizgisini yukarı/aşağı kesmesi kısa vadeli dönüş sinyali sayılır. RSI'a benzer ama daha hızlı tepki verir, bu yüzden yalancı sinyal üretebilir.",
-  },
   MFI: {
     title: "MFI (Para Akışı Endeksi)",
     body: "RSI'a benzer ama hacmi de hesaba katar (0-100). 20'nin altı para girişinin zayıfladığını, 80'in üstü aşırı yüksek para girişi olduğunu (satış riski) gösterir. Hacim temelli olduğu için RSI'ı teyit etmek amacıyla birlikte kullanılır.",
-  },
-  Aroon: {
-    title: "Aroon Göstergesi",
-    body: "Son 25 günde en yüksek/en düşük fiyatın ne kadar süre önce oluştuğunu ölçerek trendin gücünü ve yönünü belirler. Aroon Up yüksek ve Aroon Down düşükse güçlü yükseliş trendi; tersi güçlü düşüş trendi anlamına gelir. Yatay/dalgalı piyasalarda güvenilirliği azalır.",
   },
 };
 
@@ -137,15 +124,13 @@ export default function StockDetailScreen() {
   const { addEntry, getEntry, updateEntry } = usePortfolio();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [candlePatterns, setCandlePatterns] = useState<CandlePattern[]>([]);
   const [loadingChart, setLoadingChart] = useState(true);
-  const [range, setRange] = useState<ChartRange>("3mo");
+  const [range, setRange] = useState<ChartRange>("1d");
   const [showPortfolioModal, setShowPortfolioModal] = useState(false);
   const [qty, setQty] = useState("");
   const [avgCostStr, setAvgCostStr] = useState("");
   const [note, setNote] = useState("");
   const [infoKey, setInfoKey] = useState<string | null>(null);
-  const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const qtyRef = useRef<TextInput>(null);
 
   const quote = quotes[symbol ?? ""];
@@ -161,25 +146,12 @@ export default function StockDetailScreen() {
       if (data && data.closes.length >= 14) {
         const result = analyzeStock(data.closes, data.highs, data.lows, data.volumes);
         setAnalysis(result);
-        if (data.opens.length >= 3) {
-          const patterns = detectCandlePatterns(data.opens, data.highs, data.lows, data.closes);
-          setCandlePatterns(patterns);
-        }
+      } else {
+        setAnalysis(null);
       }
       setLoadingChart(false);
     });
   }, [symbol, range]);
-
-  useEffect(() => {
-    if (!symbol) return;
-    fetchChartData(symbol, "6mo").then((data) => {
-      if (data && data.closes.length >= 40) {
-        setBacktest(backtestSignals(data.closes, data.highs, data.lows, data.volumes, 5));
-      } else {
-        setBacktest(null);
-      }
-    });
-  }, [symbol]);
 
   const handleFav = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -253,9 +225,11 @@ export default function StockDetailScreen() {
   const mfiData     = chart && n >= 14 ? moneyFlowIndex(chart.highs, chart.lows, chart.closes, chart.volumes) : null;
   const ma20Data    = chart && n >= 20 ? sma(chart.closes, 20) : null;
   const ma50Data    = chart && n >= 50 ? sma(chart.closes, 50) : null;
+  const ma100Data   = chart && n >= 100 ? sma(chart.closes, 100) : null;
+  const ma200Data   = chart && n >= 200 ? sma(chart.closes, 200) : null;
+  const almaData    = chart && n >= 9 ? alma(chart.closes, 9) : null;
+  const t3Data      = chart && n >= 25 ? tilsonT3(chart.closes, 5) : null;
   const atrData     = chart && n >= 15 ? atr(chart.highs, chart.lows, chart.closes, 14) : null;
-  const stochData   = chart && n >= 17 ? stochastic(chart.highs, chart.lows, chart.closes, 14, 3) : null;
-  const aroonData   = chart && n >= 26 ? aroon(chart.highs, chart.lows, 25) : null;
 
   const latestMacd  = macdData?.macd[n - 1];
   const latestHist  = macdData?.histogram[n - 1];
@@ -263,20 +237,25 @@ export default function StockDetailScreen() {
   const latestMfi   = mfiData?.[n - 1];
   const latestMa20  = ma20Data?.[n - 1];
   const latestMa50  = ma50Data?.[n - 1];
+  const latestMa100 = ma100Data?.[n - 1];
+  const latestMa200 = ma200Data?.[n - 1];
+  const latestAlma  = almaData?.[n - 1];
+  const latestT3    = t3Data?.[n - 1];
   const latestAtr   = atrData?.[n - 1];
-  const latestStochK = stochData?.k[n - 1];
-  const latestStochD = stochData?.d[n - 1];
-  const latestAroonUp   = aroonData?.up[n - 1];
-  const latestAroonDown = aroonData?.down[n - 1];
-  const latestAroonOsc  = aroonData?.oscillator[n - 1];
 
-  const candleDir = getOverallCandleDirection(candlePatterns);
-  const candleDirColor =
-    candleDir === "bullish" ? colors.up :
-    candleDir === "bearish" ? colors.down : colors.neutral;
-  const candleDirLabel =
-    candleDir === "bullish" ? "Yükseliş" :
-    candleDir === "bearish" ? "Düşüş" : "Nötr";
+  const chartPrices = chart?.closes.filter((close) => close > 0) ?? [];
+  const chartStartPrice = chartPrices[0];
+  const chartEndPrice = chartPrices[chartPrices.length - 1];
+  const chartPerformance =
+    chartStartPrice && chartEndPrice
+      ? ((chartEndPrice - chartStartPrice) / chartStartPrice) * 100
+      : null;
+  const chartPerformanceColor =
+    chartPerformance == null
+      ? colors.mutedForeground
+      : chartPerformance >= 0
+      ? colors.up
+      : colors.down;
 
   const volatility = (() => {
     if (!chart || n < 10) return null;
@@ -328,33 +307,11 @@ export default function StockDetailScreen() {
       else if (latestMfi <= 20) lines.push(`Para akışı endeksi (MFI) ${latestMfi.toFixed(0)} ile düşük, para girişi zayıf.`);
     }
 
-    if (latestStochK != null && latestStochD != null) {
-      if (latestStochK >= 80) lines.push(`Stokastik %K ${latestStochK.toFixed(0)} ile aşırı alımda.`);
-      else if (latestStochK <= 20) lines.push(`Stokastik %K ${latestStochK.toFixed(0)} ile aşırı satımda.`);
-      if (latestStochK > latestStochD && latestStochK < 80 && latestStochK > 20) {
-        lines.push(`%K, %D'yi yukarı kesti; kısa vadede pozitif momentum sinyali.`);
-      } else if (latestStochK < latestStochD && latestStochK < 80 && latestStochK > 20) {
-        lines.push(`%K, %D'nin altına indi; kısa vadede negatif momentum sinyali.`);
-      }
-    }
-
-    if (latestAroonUp != null && latestAroonDown != null) {
-      if (latestAroonUp >= 70 && latestAroonUp > latestAroonDown) {
-        lines.push(`Aroon Up ${latestAroonUp.toFixed(0)} ile güçlü, yükseliş trendi hakim.`);
-      } else if (latestAroonDown >= 70 && latestAroonDown > latestAroonUp) {
-        lines.push(`Aroon Down ${latestAroonDown.toFixed(0)} ile güçlü, düşüş trendi hakim.`);
-      }
-    }
-
     if (latestMacd != null && latestHist != null) {
       if (latestHist > 0 && latestMacd > 0) lines.push(`MACD pozitif bölgede ve histogram artıda, momentum yukarı yönlü.`);
       else if (latestHist < 0 && latestMacd < 0) lines.push(`MACD negatif bölgede ve histogram ekside, momentum aşağı yönlü.`);
       else if (latestHist > 0) lines.push(`MACD histogramı pozitife döndü, olası bir toparlanma sinyali.`);
       else if (latestHist < 0) lines.push(`MACD histogramı negatife döndü, momentum kayboluyor.`);
-    }
-
-    if (candlePatterns.length > 0) {
-      lines.push(`Son mum formasyonu "${candlePatterns[0].name}" (${candleDirLabel.toLowerCase()} yönlü) olarak öne çıkıyor.`);
     }
 
     if (latestAtr != null && price > 0) {
@@ -376,8 +333,6 @@ export default function StockDetailScreen() {
 
   const rsiColor = latestRsi == null ? colors.mutedForeground :
     latestRsi < 30 ? colors.up : latestRsi > 70 ? colors.down : colors.neutral;
-  const stochColor = latestStochK == null ? colors.mutedForeground :
-    latestStochK < 20 ? colors.up : latestStochK > 80 ? colors.down : colors.neutral;
   const mfiColor = latestMfi == null ? colors.mutedForeground :
     latestMfi < 20 ? colors.up : latestMfi > 80 ? colors.down : colors.neutral;
 
@@ -472,6 +427,28 @@ export default function StockDetailScreen() {
           </View>
         )}
 
+        {/* Selected range performance */}
+        {chartPerformance != null && chartStartPrice != null && chartEndPrice != null && (
+          <View style={[styles.performanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View>
+              <Text style={[styles.performanceLabel, { color: colors.mutedForeground }]}>
+                {RANGES.find((item) => item.key === range)?.label ?? range} performansı
+              </Text>
+              <Text style={[styles.performanceSub, { color: colors.mutedForeground }]}>
+                Başlangıç ₺{chartStartPrice.toFixed(2)} · Son ₺{chartEndPrice.toFixed(2)}
+              </Text>
+            </View>
+            <View style={styles.performanceValueWrap}>
+              <Text style={[styles.performanceAmount, { color: chartPerformanceColor }]}>
+                {chartEndPrice - chartStartPrice >= 0 ? "+" : ""}₺{(chartEndPrice - chartStartPrice).toFixed(2)}
+              </Text>
+              <Text style={[styles.performancePercent, { color: chartPerformanceColor }]}>
+                {chartPerformance >= 0 ? "+" : ""}{chartPerformance.toFixed(2)}%
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Price Info */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Fiyat Bilgisi</Text>
@@ -516,24 +493,8 @@ export default function StockDetailScreen() {
                 {latestRsi != null && (
                   <IndicatorCard label="RSI" subLabel="Aşırı Al/Sat" value={latestRsi} min={0} max={100} color={rsiColor} onInfoPress={() => setInfoKey("RSI")} />
                 )}
-                {latestStochK != null && (
-                  <IndicatorCard label="Stoch %K" subLabel="Momentum" value={latestStochK} min={0} max={100} color={stochColor} onInfoPress={() => setInfoKey("Stoch %K")} />
-                )}
                 {latestMfi != null && (
                   <IndicatorCard label="MFI" subLabel="Para Akışı" value={latestMfi} min={0} max={100} color={mfiColor} onInfoPress={() => setInfoKey("MFI")} />
-                )}
-                {latestAroonOsc != null && (
-                  <IndicatorCard
-                    label="Aroon"
-                    subLabel={`↑${latestAroonUp?.toFixed(0)} ↓${latestAroonDown?.toFixed(0)}`}
-                    value={(latestAroonOsc ?? 0) + 100}
-                    min={0} max={200}
-                    color={
-                      (latestAroonOsc ?? 0) > 40 ? colors.up :
-                      (latestAroonOsc ?? 0) < -40 ? colors.down : colors.neutral
-                    }
-                    onInfoPress={() => setInfoKey("Aroon")}
-                  />
                 )}
               </View>
               <Text style={[styles.indHint, { color: colors.mutedForeground }]}>
@@ -560,6 +521,50 @@ export default function StockDetailScreen() {
                     </Text>
                     <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
                       {price != null ? (price > latestMa50 ? "Üstünde" : "Altında") : ""}
+                    </Text>
+                  </View>
+                )}
+                {latestMa100 != null && (
+                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
+                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>MA 100</Text>
+                    <Text style={[styles.maValue, { color: price != null ? (price > latestMa100 ? colors.up : colors.down) : colors.foreground }]}>
+                      ₺{latestMa100.toFixed(2)}
+                    </Text>
+                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
+                      {price != null ? (price > latestMa100 ? "Üstünde" : "Altında") : ""}
+                    </Text>
+                  </View>
+                )}
+                {latestMa200 != null && (
+                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
+                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>MA 200</Text>
+                    <Text style={[styles.maValue, { color: price != null ? (price > latestMa200 ? colors.up : colors.down) : colors.foreground }]}>
+                      ₺{latestMa200.toFixed(2)}
+                    </Text>
+                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
+                      {price != null ? (price > latestMa200 ? "Üstünde" : "Altında") : ""}
+                    </Text>
+                  </View>
+                )}
+                {latestAlma != null && (
+                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
+                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>ALMA 9</Text>
+                    <Text style={[styles.maValue, { color: price != null ? (price > latestAlma ? colors.up : colors.down) : colors.foreground }]}>
+                      ₺{latestAlma.toFixed(2)}
+                    </Text>
+                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
+                      {price != null ? (price > latestAlma ? "Üstünde" : "Altında") : ""}
+                    </Text>
+                  </View>
+                )}
+                {latestT3 != null && (
+                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
+                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>Tilson T3</Text>
+                    <Text style={[styles.maValue, { color: price != null ? (price > latestT3 ? colors.up : colors.down) : colors.foreground }]}>
+                      ₺{latestT3.toFixed(2)}
+                    </Text>
+                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
+                      {price != null ? (price > latestT3 ? "Üstünde" : "Altında") : ""}
                     </Text>
                   </View>
                 )}
@@ -595,36 +600,6 @@ export default function StockDetailScreen() {
             </>
           )}
         </View>
-
-        {/* Candle Patterns */}
-        {!loadingChart && (
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Mum Formasyonu</Text>
-            <View style={styles.candleHeaderRow}>
-              <View style={[styles.candleDirBadge, { backgroundColor: `${candleDirColor}20`, borderColor: `${candleDirColor}44` }]}>
-                <Text style={[styles.candleDirLabel, { color: candleDirColor }]}>{candleDirLabel}</Text>
-              </View>
-              <Text style={[styles.candleSubtext, { color: colors.mutedForeground }]}>
-                {candlePatterns.length === 0 ? "Net formasyon yok" : `${candlePatterns.length} formasyon`}
-              </Text>
-            </View>
-            {candlePatterns.map((p, i) => (
-              <View key={i} style={[styles.candleRow, { borderBottomColor: colors.border }]}>
-                <Text style={styles.candleEmoji}>{p.emoji}</Text>
-                <Text style={[styles.candleName, { color: colors.foreground }]}>{p.name}</Text>
-                <View style={[styles.candleDirPill, {
-                  backgroundColor: `${p.direction === "bullish" ? colors.up : p.direction === "bearish" ? colors.down : colors.neutral}20`
-                }]}>
-                  <Text style={[styles.candleDirText, {
-                    color: p.direction === "bullish" ? colors.up : p.direction === "bearish" ? colors.down : colors.neutral
-                  }]}>
-                    {p.direction === "bullish" ? "↑ Yükseliş" : p.direction === "bearish" ? "↓ Düşüş" : "→ Nötr"}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
 
         {/* Signal Reasons */}
         {analysis && (
@@ -683,41 +658,6 @@ export default function StockDetailScreen() {
               )}
               <Text style={[styles.reportText, { color: colors.mutedForeground, marginTop: 6 }]}>
                 Bu seviyeler ATR (Average True Range) volatilitesine göre hesaplanan referans noktalarıdır, kesin garanti sunmaz. Pozisyon büyüklüğünüzü zarar kesme mesafesine göre ayarlayın.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Signal Performance Tracking */}
-        {backtest && (backtest.buySignalCount > 0 || backtest.sellSignalCount > 0) && (
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Sinyal Performans Takibi</Text>
-            <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.reportText, { color: colors.mutedForeground, marginBottom: 8 }]}>
-                Son 6 ayda bu hissede üretilen AL/SAT sinyallerinin {backtest.horizonDays} gün sonrasında ne kadar isabetli çıktığı:
-              </Text>
-              {backtest.buySignalCount > 0 && (
-                <View style={styles.riskRow}>
-                  <Text style={[styles.riskLabel, { color: colors.mutedForeground }]}>
-                    AL sinyalleri ({backtest.buySignalCount} adet)
-                  </Text>
-                  <Text style={[styles.riskValue, { color: backtest.buyWinRate >= 50 ? colors.up : colors.down }]}>
-                    %{backtest.buyWinRate.toFixed(0)} isabet
-                  </Text>
-                </View>
-              )}
-              {backtest.sellSignalCount > 0 && (
-                <View style={styles.riskRow}>
-                  <Text style={[styles.riskLabel, { color: colors.mutedForeground }]}>
-                    SAT sinyalleri ({backtest.sellSignalCount} adet)
-                  </Text>
-                  <Text style={[styles.riskValue, { color: backtest.sellWinRate >= 50 ? colors.up : colors.down }]}>
-                    %{backtest.sellWinRate.toFixed(0)} isabet
-                  </Text>
-                </View>
-              )}
-              <Text style={[styles.reportText, { color: colors.mutedForeground, marginTop: 6 }]}>
-                Bu, sadece bu hissenin kendi geçmiş verisine dayanan bir istatistiktir; az sayıda sinyal varsa güvenilirliği düşer ve geçmiş performans gelecek için garanti oluşturmaz.
               </Text>
             </View>
           </View>
@@ -1006,21 +946,22 @@ const styles = StyleSheet.create({
   maLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 4 },
   maValue: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 2 },
   maSub: { fontSize: 10, fontFamily: "Inter_400Regular" },
-  candleHeaderRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
-  candleDirBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
-  candleDirLabel: { fontSize: 13, fontFamily: "Inter_700Bold" },
-  candleSubtext: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  candleRow: {
+  performanceCard: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    justifyContent: "space-between",
   },
-  candleEmoji: { fontSize: 18, width: 26 },
-  candleName: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
-  candleDirPill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  candleDirText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  performanceLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 3 },
+  performanceSub: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  performanceValueWrap: { alignItems: "flex-end" },
+  performanceAmount: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  performancePercent: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginTop: 2 },
   reasonRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 8 },
   reasonText: { fontSize: 13, fontFamily: "Inter_400Regular", flex: 1, lineHeight: 19 },
   reportCard: { borderRadius: 12, padding: 14, borderWidth: StyleSheet.hairlineWidth },

@@ -31,6 +31,75 @@ export function ema(prices: number[], period: number): number[] {
   return result;
 }
 
+export function alma(
+  prices: number[],
+  period = 9,
+  offset = 0.85,
+  sigma = 6,
+): number[] {
+  const result: number[] = new Array(prices.length).fill(NaN);
+  const center = offset * (period - 1);
+  const denominator = 2 * sigma * sigma;
+  const weights = Array.from({ length: period }, (_, i) =>
+    Math.exp(-Math.pow(i - center, 2) / denominator),
+  );
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+
+  for (let i = period - 1; i < prices.length; i++) {
+    const window = prices.slice(i - period + 1, i + 1);
+    result[i] =
+      window.reduce((sum, price, index) => sum + price * weights[index], 0) /
+      weightTotal;
+  }
+  return result;
+}
+
+export function tilsonT3(
+  prices: number[],
+  period = 5,
+  volumeFactor = 0.7,
+): number[] {
+  const smooth = (input: number[]) => {
+    const result: number[] = new Array(input.length).fill(NaN);
+    let previous = NaN;
+    let count = 0;
+    for (let i = 0; i < input.length; i++) {
+      const value = input[i];
+      if (isNaN(value)) continue;
+      if (isNaN(previous)) {
+        previous = value;
+      } else {
+        previous = value * (2 / (period + 1)) + previous * (1 - 2 / (period + 1));
+      }
+      count++;
+      if (count >= period) result[i] = previous;
+    }
+    return result;
+  };
+  const e1 = smooth(prices);
+  const e2 = smooth(e1);
+  const e3 = smooth(e2);
+  const e4 = smooth(e3);
+  const e5 = smooth(e4);
+  const e6 = smooth(e5);
+  const result: number[] = new Array(prices.length).fill(NaN);
+  const v = volumeFactor;
+  const c1 = -v * v * v;
+  const c2 = 3 * v * v + 3 * v * v * v;
+  const c3 = -6 * v * v - 3 * v - 3 * v * v * v;
+  const c4 = 1 + 3 * v + v * v * v + 3 * v * v;
+
+  for (let i = 0; i < prices.length; i++) {
+    if (isNaN(e6[i]) || isNaN(e5[i]) || isNaN(e4[i]) || isNaN(e3[i])) continue;
+    result[i] =
+      c1 * e6[i] +
+      c2 * e5[i] +
+      c3 * e4[i] +
+      c4 * e3[i];
+  }
+  return result;
+}
+
 export interface MACDResult {
   macd: number[];
   signal: number[];
@@ -109,43 +178,6 @@ export function bollingerBands(prices: number[], period = 20, stdDev = 2): Bolli
   return { upper, middle, lower };
 }
 
-export interface StochasticResult {
-  k: number[];
-  d: number[];
-}
-
-export function stochastic(
-  highs: number[],
-  lows: number[],
-  closes: number[],
-  kPeriod = 14,
-  dPeriod = 3
-): StochasticResult {
-  const k: number[] = [];
-  for (let i = 0; i < closes.length; i++) {
-    if (i < kPeriod - 1) {
-      k.push(NaN);
-    } else {
-      const sliceH = highs.slice(i - kPeriod + 1, i + 1);
-      const sliceL = lows.slice(i - kPeriod + 1, i + 1);
-      const highest = Math.max(...sliceH);
-      const lowest = Math.min(...sliceL);
-      const range = highest - lowest;
-      k.push(range === 0 ? 50 : ((closes[i] - lowest) / range) * 100);
-    }
-  }
-  const d = sma(k.filter((v) => !isNaN(v)), dPeriod);
-  const dAligned: number[] = new Array(closes.length).fill(NaN);
-  let di = 0;
-  for (let i = 0; i < closes.length; i++) {
-    if (!isNaN(k[i])) {
-      dAligned[i] = d[di] ?? NaN;
-      di++;
-    }
-  }
-  return { k, d: dAligned };
-}
-
 export function moneyFlowIndex(
   highs: number[],
   lows: number[],
@@ -196,36 +228,6 @@ export function atr(
   return result;
 }
 
-/* ─── Aroon (Up, Down, Oscillator) ─── */
-export interface AroonResult {
-  up: number[];
-  down: number[];
-  oscillator: number[];
-}
-
-export function aroon(
-  highs: number[],
-  lows: number[],
-  period = 25
-): AroonResult {
-  const up: number[] = new Array(highs.length).fill(NaN);
-  const down: number[] = new Array(lows.length).fill(NaN);
-  const oscillator: number[] = new Array(highs.length).fill(NaN);
-
-  for (let i = period; i < highs.length; i++) {
-    const sliceH = highs.slice(i - period, i + 1);
-    const sliceL = lows.slice(i - period, i + 1);
-    const maxIdx = sliceH.reduce((best, v, idx) => (v > sliceH[best] ? idx : best), 0);
-    const minIdx = sliceL.reduce((best, v, idx) => (v < sliceL[best] ? idx : best), 0);
-    const aroonUp = ((maxIdx) / period) * 100;
-    const aroonDown = ((minIdx) / period) * 100;
-    up[i] = aroonUp;
-    down[i] = aroonDown;
-    oscillator[i] = aroonUp - aroonDown;
-  }
-  return { up, down, oscillator };
-}
-
 export type Signal = "buy" | "sell" | "neutral";
 
 export type SignalStrength = "güçlü" | "orta" | "zayıf";
@@ -241,11 +243,6 @@ export interface AnalysisResult {
   ma50: number;
   currentPrice: number;
   atrValue: number;
-  stochK: number;
-  stochD: number;
-  aroonUp: number;
-  aroonDown: number;
-  aroonOsc: number;
   strength: SignalStrength;
   volumeConfirmed: boolean;
   stopLoss: number;
@@ -271,11 +268,6 @@ export function analyzeStock(
     ma50: NaN,
     currentPrice: closes[n - 1] ?? 0,
     atrValue: NaN,
-    stochK: NaN,
-    stochD: NaN,
-    aroonUp: NaN,
-    aroonDown: NaN,
-    aroonOsc: NaN,
     strength: "zayıf",
     volumeConfirmed: false,
     stopLoss: NaN,
@@ -303,17 +295,6 @@ export function analyzeStock(
   /* --- new indicators --- */
   const atrArr = atr(highs, lows, closes, 14);
   const atrVal = atrArr[n - 1] ?? NaN;
-
-  const stochResult = stochastic(highs, lows, closes, 14, 3);
-  const stochK = stochResult.k[n - 1] ?? NaN;
-  const stochD = stochResult.d[n - 1] ?? NaN;
-  const prevStochK = stochResult.k[n - 2] ?? NaN;
-  const prevStochD = stochResult.d[n - 2] ?? NaN;
-
-  const aroonResult = aroon(highs, lows, 25);
-  const aroonUp = aroonResult.up[n - 1] ?? NaN;
-  const aroonDown = aroonResult.down[n - 1] ?? NaN;
-  const aroonOsc = aroonResult.oscillator[n - 1] ?? NaN;
 
   let score = 0;
   const reasons: string[] = [];
@@ -346,24 +327,6 @@ export function analyzeStock(
   if (!isNaN(mfiVal)) {
     if (mfiVal < 20) { score += 1; reasons.push(`Para akışı düşük (MFI: ${mfiVal.toFixed(0)})`); }
     else if (mfiVal > 80) { score -= 1; reasons.push(`Para akışı yüksek (MFI: ${mfiVal.toFixed(0)})`); }
-  }
-
-  /* Stochastic */
-  if (!isNaN(stochK) && !isNaN(stochD) && !isNaN(prevStochK) && !isNaN(prevStochD)) {
-    const crossedUp = prevStochK <= prevStochD && stochK > stochD;
-    const crossedDown = prevStochK >= prevStochD && stochK < stochD;
-    if (stochK < 20 && crossedUp) { score += 2; reasons.push(`Stochastic aşırı satım + yukarı kesim (%K:${stochK.toFixed(0)})`); }
-    else if (stochK < 20) { score += 1; reasons.push(`Stochastic aşırı satım bölgesi (%K:${stochK.toFixed(0)})`); }
-    else if (stochK > 80 && crossedDown) { score -= 2; reasons.push(`Stochastic aşırı alım + aşağı kesim (%K:${stochK.toFixed(0)})`); }
-    else if (stochK > 80) { score -= 1; reasons.push(`Stochastic aşırı alım bölgesi (%K:${stochK.toFixed(0)})`); }
-  }
-
-  /* Aroon */
-  if (!isNaN(aroonOsc)) {
-    if (aroonUp > 70 && aroonDown < 30) { score += 2; reasons.push(`Aroon güçlü yükseliş trendi (↑${aroonUp.toFixed(0)})`); }
-    else if (aroonOsc > 40) { score += 1; reasons.push(`Aroon pozitif (${aroonOsc.toFixed(0)})`); }
-    else if (aroonDown > 70 && aroonUp < 30) { score -= 2; reasons.push(`Aroon güçlü düşüş trendi (↓${aroonDown.toFixed(0)})`); }
-    else if (aroonOsc < -40) { score -= 1; reasons.push(`Aroon negatif (${aroonOsc.toFixed(0)})`); }
   }
 
   /* Volume confirmation: son TAMAMLANMIŞ günün hacmi, önceki 20 günlük ortalamanın üstünde mi?
@@ -416,11 +379,6 @@ export function analyzeStock(
     ma50,
     currentPrice,
     atrValue: atrVal,
-    stochK,
-    stochD,
-    aroonUp,
-    aroonDown,
-    aroonOsc,
     strength,
     volumeConfirmed,
     stopLoss,
@@ -451,204 +409,3 @@ export function getActionAdvice(a: AnalysisResult): string {
   return "Göstergeler net bir yön göstermiyor (birbirini nötrleyen sinyaller var). Bu genelde kararsız/yatay bir piyasa anlamına gelir; net bir sinyal oluşana kadar beklemek, yeni pozisyon açmamak mantıklı olur.";
 }
 
-export interface BacktestResult {
-  buySignalCount: number;
-  buyWinCount: number;
-  buyWinRate: number;
-  sellSignalCount: number;
-  sellWinCount: number;
-  sellWinRate: number;
-  horizonDays: number;
-}
-
-/**
- * Basit geriye dönük test: elimizdeki geçmiş veri boyunca her gün için o güne kadarki
- * veriyle analyzeStock çalıştırılır, AL/SAT sinyali üretildiğinde `horizonDays` gün sonraki
- * fiyat değişimine bakılarak sinyalin "isabetli" olup olmadığı sayılır.
- * Bu sadece mevcut hissenin kendi geçmişine dayanan yaklaşık bir gösterge olup gelecek performansı garanti etmez.
- */
-export function backtestSignals(
-  closes: number[],
-  highs: number[],
-  lows: number[],
-  volumes: number[],
-  horizonDays = 5
-): BacktestResult {
-  let buySignalCount = 0, buyWinCount = 0;
-  let sellSignalCount = 0, sellWinCount = 0;
-  const n = closes.length;
-
-  for (let i = 30; i < n - horizonDays; i++) {
-    const slicedCloses = closes.slice(0, i + 1);
-    const slicedHighs = highs.slice(0, i + 1);
-    const slicedLows = lows.slice(0, i + 1);
-    const slicedVolumes = volumes.slice(0, i + 1);
-    const result = analyzeStock(slicedCloses, slicedHighs, slicedLows, slicedVolumes);
-    if (result.signal === "neutral") continue;
-
-    const priceAtSignal = closes[i];
-    const priceAfter = closes[i + horizonDays];
-    const changePct = ((priceAfter - priceAtSignal) / priceAtSignal) * 100;
-
-    if (result.signal === "buy") {
-      buySignalCount++;
-      if (changePct > 0) buyWinCount++;
-    } else if (result.signal === "sell") {
-      sellSignalCount++;
-      if (changePct < 0) sellWinCount++;
-    }
-  }
-
-  return {
-    buySignalCount,
-    buyWinCount,
-    buyWinRate: buySignalCount > 0 ? (buyWinCount / buySignalCount) * 100 : NaN,
-    sellSignalCount,
-    sellWinCount,
-    sellWinRate: sellSignalCount > 0 ? (sellWinCount / sellSignalCount) * 100 : NaN,
-    horizonDays,
-  };
-}
-
-export type CandleDirection = "bullish" | "bearish" | "neutral";
-
-export interface CandlePattern {
-  name: string;
-  direction: CandleDirection;
-  emoji: string;
-}
-
-export function detectCandlePatterns(
-  opens: number[],
-  highs: number[],
-  lows: number[],
-  closes: number[]
-): CandlePattern[] {
-  const n = closes.length;
-  if (n < 3) return [];
-
-  const patterns: CandlePattern[] = [];
-
-  const o = opens[n - 1], h = highs[n - 1], l = lows[n - 1], c = closes[n - 1];
-  const o2 = opens[n - 2], h2 = highs[n - 2], l2 = lows[n - 2], c2 = closes[n - 2];
-  const c3 = closes[n - 3];
-
-  const body = Math.abs(c - o);
-  const body2 = Math.abs(c2 - o2);
-  const range = h - l;
-  const range2 = h2 - l2;
-  const upperWick = h - Math.max(o, c);
-  const lowerWick = Math.min(o, c) - l;
-  const upperWick2 = h2 - Math.max(o2, c2);
-  const lowerWick2 = Math.min(o2, c2) - l2;
-  const isBull = c > o;
-  const isBull2 = c2 > o2;
-  const midBody2 = (o2 + c2) / 2;
-
-  if (range > 0) {
-    const bodyRatio = body / range;
-
-    if (bodyRatio < 0.1) {
-      patterns.push({ name: "Doji", direction: "neutral", emoji: "⚖️" });
-    }
-
-    if (isBull && lowerWick > body * 2 && upperWick < body * 0.5 && lowerWick > range * 0.5) {
-      patterns.push({ name: "Çekiç", direction: "bullish", emoji: "🔨" });
-    }
-
-    if (!isBull && lowerWick > body * 2 && upperWick < body * 0.5 && lowerWick > range * 0.5) {
-      patterns.push({ name: "Asılı Adam", direction: "bearish", emoji: "🪝" });
-    }
-
-    if (!isBull && upperWick > body * 2 && lowerWick < body * 0.5 && upperWick > range * 0.5) {
-      patterns.push({ name: "Kayan Yıldız", direction: "bearish", emoji: "💫" });
-    }
-
-    if (isBull && upperWick > body * 2 && lowerWick < body * 0.5 && upperWick > range * 0.5) {
-      patterns.push({ name: "Ters Çekiç", direction: "bullish", emoji: "🌟" });
-    }
-
-    if (isBull && bodyRatio > 0.7 && c >= h2 && o <= l2) {
-      patterns.push({ name: "Yutan Boğa", direction: "bullish", emoji: "🐂" });
-    } else if (isBull && !isBull2 && c > midBody2 && o < c2) {
-      patterns.push({ name: "Hamile Boğa", direction: "bullish", emoji: "📈" });
-    }
-
-    if (!isBull && bodyRatio > 0.7 && c <= l2 && o >= h2) {
-      patterns.push({ name: "Yutan Ayı", direction: "bearish", emoji: "🐻" });
-    } else if (!isBull && isBull2 && c < midBody2 && o > c2) {
-      patterns.push({ name: "Hamile Ayı", direction: "bearish", emoji: "📉" });
-    }
-
-    if (isBull2 && body2 > 0 && upperWick2 < body2 * 0.3) {
-      const o3 = opens[n - 3];
-      const isBear3 = c3 < o3;
-      if (isBear3 && isBull && c > midBody2) {
-        patterns.push({ name: "Sabah Yıldızı", direction: "bullish", emoji: "🌅" });
-      }
-    }
-
-    if (!isBull2 && body2 > 0 && lowerWick2 < body2 * 0.3) {
-      const o3 = opens[n - 3];
-      const isBull3 = c3 > o3;
-      if (isBull3 && !isBull && c < midBody2) {
-        patterns.push({ name: "Akşam Yıldızı", direction: "bearish", emoji: "🌆" });
-      }
-    }
-
-    if (Math.abs(c2 - o2) / (range2 || 1) > 0.6 && isBull2 && isBull && c > c2) {
-      patterns.push({ name: "İki Beyaz Mum", direction: "bullish", emoji: "🕯️" });
-    }
-    if (Math.abs(c2 - o2) / (range2 || 1) > 0.6 && !isBull2 && !isBull && c < c2) {
-      patterns.push({ name: "İki Kara Mum", direction: "bearish", emoji: "🕯️" });
-    }
-  }
-
-  return patterns;
-}
-
-export function getOverallCandleDirection(patterns: CandlePattern[]): CandleDirection {
-  if (patterns.length === 0) return "neutral";
-  const bull = patterns.filter((p) => p.direction === "bullish").length;
-  const bear = patterns.filter((p) => p.direction === "bearish").length;
-  if (bull > bear) return "bullish";
-  if (bear > bull) return "bearish";
-  return "neutral";
-}
-
-export function detectSingleCandle(
-  open: number,
-  high: number,
-  low: number,
-  close: number,
-  prevClose: number
-): CandlePattern | null {
-  const body = Math.abs(close - open);
-  const range = high - low;
-  if (range === 0) return null;
-  const bodyRatio = body / range;
-  const isBull = close >= open;
-  const upperWick = high - Math.max(open, close);
-  const lowerWick = Math.min(open, close) - low;
-
-  if (bodyRatio < 0.08) {
-    return { name: "Doji", direction: "neutral", emoji: "⚖️" };
-  }
-  if (lowerWick > body * 2 && upperWick < body * 0.5) {
-    return isBull
-      ? { name: "Çekiç", direction: "bullish", emoji: "🔨" }
-      : { name: "Asılı Adam", direction: "bearish", emoji: "🪝" };
-  }
-  if (upperWick > body * 2 && lowerWick < body * 0.5) {
-    return isBull
-      ? { name: "Ters Çekiç", direction: "bullish", emoji: "🌟" }
-      : { name: "Kayan Yıldız", direction: "bearish", emoji: "💫" };
-  }
-  if (bodyRatio > 0.65) {
-    const gapUp = open > prevClose * 1.001;
-    const gapDown = open < prevClose * 0.999;
-    if (isBull && gapUp) return { name: "Güçlü Boğa", direction: "bullish", emoji: "🐂" };
-    if (!isBull && gapDown) return { name: "Güçlü Ayı", direction: "bearish", emoji: "🐻" };
-  }
-  return null;
-}
