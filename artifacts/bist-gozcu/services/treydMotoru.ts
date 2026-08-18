@@ -1,19 +1,40 @@
-// Dosya: services/treydMotoru.ts
-
 import { Hisse } from "@/services/collectApi";
+import { fetchChartData } from "@/utils/yahooFinance";
+import { analyzeDailySetup, analyzeStock, DailyTrendDirection } from "@/utils/indicators";
+
+export type TreydEtiketi = "GÜÇLÜ ALIM" | "MOMENTUM KIRILIMI" | "TAKİP LİSTESİ";
+
+const TOTAL_CONFIRMATIONS = 7;
 
 export type TreydSinyali = {
   sembol: string;
   fiyat: number;
   degisimYuzde: number;
   hacim: number;
+  goreceliHacim: number;
   skor: number;
-  etiket: "GÜÇLÜ ALIM" | "MOMENTUM KIRILIMI" | "TAKİP LİSTESİ";
+  etiket: TreydEtiketi;
+  trendTeyitli: boolean;
+  gunlukTrend: DailyTrendDirection;
+  direnc: number;
+  direncKirildi: boolean;
+  hacimTeyitli: boolean;
+  rsiValue: number;
+  rsiUygun: boolean;
+  yuksekDip: boolean;
+  yuksekTepe: boolean;
+  yapiTeyitli: boolean;
+  teyitSayisi: number;
+  toplamTeyit: number;
+  teyitler: string[];
 };
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
 
 export const calculateMedian = (values: number[]): number => {
   const validValues = values
-    .filter((value) => Number.isFinite(value) && value >= 0)
+    .filter((value) => Number.isFinite(value) && value > 0)
     .sort((a, b) => a - b);
 
   if (validValues.length === 0) return 0;
@@ -23,27 +44,175 @@ export const calculateMedian = (values: number[]): number => {
     : validValues[middle];
 };
 
-const getEtiket = (
-  skor: number,
-): TreydSinyali["etiket"] => {
-  if (skor >= 2.5) return "GÜÇLÜ ALIM";
-  if (skor >= 1.25) return "MOMENTUM KIRILIMI";
-  return "TAKİP LİSTESİ";
+const getQuoteCandidate = (hisse: Hisse, medianVolume: number): TreydSinyali => {
+  const volumeBaseline = hisse.ortalamaHacim && hisse.ortalamaHacim > 0
+    ? hisse.ortalamaHacim
+    : medianVolume;
+  const goreceliHacim = volumeBaseline > 0 ? hisse.hacim / volumeBaseline : 1;
+  const boundedRelativeVolume = clamp(goreceliHacim, 0.5, 3);
+  const priceComponent = clamp(hisse.degisimYuzde / 2, -2, 2);
+  const volumeComponent = clamp((boundedRelativeVolume - 1) / 1.5, -0.35, 1.25);
+  const skor = priceComponent * 0.75 + volumeComponent * 0.25;
+
+  return {
+    sembol: hisse.sembol,
+    fiyat: hisse.fiyat,
+    degisimYuzde: hisse.degisimYuzde,
+    hacim: hisse.hacim,
+    goreceliHacim,
+    skor,
+    etiket: skor >= 0.9 ? "MOMENTUM KIRILIMI" : "TAKİP LİSTESİ",
+    trendTeyitli: false,
+    gunlukTrend: "sideways",
+    direnc: NaN,
+    direncKirildi: false,
+    hacimTeyitli: false,
+    rsiValue: NaN,
+    rsiUygun: false,
+    yuksekDip: false,
+    yuksekTepe: false,
+    yapiTeyitli: false,
+    teyitSayisi: 0,
+    toplamTeyit: TOTAL_CONFIRMATIONS,
+    teyitler: ["Günlük fiyat değişimi ve göreceli hacim ön taraması"],
+  };
 };
 
 export const getTop6Treyd = (hisseler: Hisse[]): TreydSinyali[] => {
-  const medyanHacim = calculateMedian(hisseler.map((hisse) => hisse.hacim));
-  if (medyanHacim <= 0) return [];
+  const validStocks = hisseler.filter(
+    (hisse) =>
+      Number.isFinite(hisse.fiyat) &&
+      hisse.fiyat > 0 &&
+      Number.isFinite(hisse.degisimYuzde) &&
+      Number.isFinite(hisse.hacim) &&
+      hisse.degisimYuzde > 0,
+  );
+  const medianVolume = calculateMedian(validStocks.map((hisse) => hisse.hacim));
+  if (medianVolume <= 0 || validStocks.length === 0) return [];
 
-  return hisseler
-    .map((hisse) => ({
-      ...hisse,
-      skor: hisse.degisimYuzde * 0.6 + (hisse.hacim / medyanHacim) * 0.4,
-      etiket: getEtiket(
-        hisse.degisimYuzde * 0.6 + (hisse.hacim / medyanHacim) * 0.4,
-      ),
-    }))
-    .filter((hisse) => hisse.degisimYuzde > 0 && hisse.skor > 0)
+  return validStocks
+    .map((hisse) => getQuoteCandidate(hisse, medianVolume))
     .sort((a, b) => b.skor - a.skor)
     .slice(0, 6);
+};
+
+const addSetupReason = (reasons: string[], label: string, confirmed: boolean): void => {
+  reasons.push(`${confirmed ? "✓" : "—"} ${label}`);
+};
+
+const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> => {
+  try {
+    const chart = await fetchChartData(candidate.sembol, "3mo");
+    if (!chart || chart.closes.length < 60) {
+      return {
+        ...candidate,
+        etiket: "TAKİP LİSTESİ",
+        teyitler: ["— Günlük tarihsel teyit için yeterli veri alınamadı"],
+      };
+    }
+
+    const analysis = analyzeStock(chart.closes, chart.highs, chart.lows, chart.volumes);
+    const daily = analyzeDailySetup(chart.closes, chart.highs, chart.lows, chart.volumes);
+    const lastCompletedIdx = chart.closes.length >= 2 ? chart.closes.length - 2 : chart.closes.length - 1;
+    const lastClose = chart.closes[lastCompletedIdx] ?? candidate.fiyat;
+    const previousClose = chart.closes[Math.max(0, lastCompletedIdx - 1)] ?? lastClose;
+    const priceMomentum = lastClose > previousClose;
+    const technicalBuy = analysis.signal === "buy";
+    const trendConfirmed = daily.dailyTrend === "up";
+    const confirmations = [
+      trendConfirmed,
+      daily.resistanceBreakout,
+      daily.volumeConfirmed,
+      daily.rsiFavorable,
+      daily.structureConfirmed,
+      technicalBuy,
+      priceMomentum,
+    ];
+    const teyitSayisi = confirmations.filter(Boolean).length;
+    const teyitler: string[] = [];
+
+    addSetupReason(teyitler, `Günlük trend yükseliş (${daily.dailyTrend})`, trendConfirmed);
+    addSetupReason(
+      teyitler,
+      Number.isFinite(daily.resistance)
+        ? `Direnç kırılımı (₺${daily.resistance.toFixed(2)})`
+        : "Direnç seviyesi hesaplanamadı",
+      daily.resistanceBreakout,
+    );
+    addSetupReason(
+      teyitler,
+      Number.isFinite(daily.relativeVolume)
+        ? `Hacim teyidi (RVOL ${daily.relativeVolume.toFixed(2)}x)`
+        : "Hacim teyidi hesaplanamadı",
+      daily.volumeConfirmed,
+    );
+    addSetupReason(
+      teyitler,
+      Number.isFinite(daily.rsiValue)
+        ? `RSI uygun bölge (${daily.rsiValue.toFixed(0)})`
+        : "RSI hesaplanamadı",
+      daily.rsiFavorable,
+    );
+    addSetupReason(
+      teyitler,
+      "Yüksek dip + yüksek tepe yapısı",
+      daily.structureConfirmed,
+    );
+    addSetupReason(teyitler, "Çoklu teknik gösterge alım yönünde", technicalBuy);
+    addSetupReason(teyitler, "Son tamamlanmış günlük kapanış pozitif", priceMomentum);
+
+    const strongBuy =
+      candidate.degisimYuzde >= 0.75 &&
+      trendConfirmed &&
+      daily.resistanceBreakout &&
+      daily.volumeConfirmed &&
+      daily.rsiFavorable &&
+      daily.structureConfirmed &&
+      technicalBuy &&
+      priceMomentum;
+    const momentumBreakout =
+      daily.dailyTrend !== "down" &&
+      teyitSayisi >= 4 &&
+      (daily.resistanceBreakout || daily.structureConfirmed);
+    const etiket: TreydEtiketi = strongBuy
+      ? "GÜÇLÜ ALIM"
+      : momentumBreakout
+        ? "MOMENTUM KIRILIMI"
+        : "TAKİP LİSTESİ";
+
+    return {
+      ...candidate,
+      skor: candidate.skor + teyitSayisi * 0.2 + (daily.resistanceBreakout ? 0.2 : 0),
+      etiket,
+      trendTeyitli: trendConfirmed,
+      gunlukTrend: daily.dailyTrend,
+      direnc: daily.resistance,
+      direncKirildi: daily.resistanceBreakout,
+      hacimTeyitli: daily.volumeConfirmed,
+      rsiValue: daily.rsiValue,
+      rsiUygun: daily.rsiFavorable,
+      yuksekDip: daily.higherLow,
+      yuksekTepe: daily.higherHigh,
+      yapiTeyitli: daily.structureConfirmed,
+      teyitSayisi,
+      toplamTeyit: TOTAL_CONFIRMATIONS,
+      teyitler,
+    };
+  } catch {
+    return {
+      ...candidate,
+      etiket: "TAKİP LİSTESİ",
+      teyitler: ["— Tarihsel veri alınamadı; güvenli modda gösteriliyor"],
+    };
+  }
+};
+
+export const getTop6TreydWithConfirmation = async (
+  hisseler: Hisse[],
+): Promise<TreydSinyali[]> => {
+  const candidates = getTop6Treyd(hisseler);
+  if (candidates.length === 0) return [];
+
+  const confirmed = await Promise.all(candidates.map(confirmCandidate));
+  return confirmed.sort((a, b) => b.skor - a.skor).slice(0, 6);
 };

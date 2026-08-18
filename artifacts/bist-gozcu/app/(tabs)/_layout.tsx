@@ -7,7 +7,6 @@ import { useAlerts } from "@/contexts/AlertContext";
 import {
   IconBarChart,
   IconStar,
-  IconBriefcase,
   IconSearch,
   IconBell,
   IconTrendingUp,
@@ -84,11 +83,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="portfolio"
-        options={{
-          title: "Portföy",
-          tabBarLabel: "Portföy",
-          tabBarIcon: ({ color }) => <IconBriefcase color={color} size={22} />,
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="search"

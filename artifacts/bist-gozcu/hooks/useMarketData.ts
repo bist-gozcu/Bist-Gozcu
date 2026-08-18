@@ -3,8 +3,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBist100, Hisse } from "@/services/collectApi";
+import { isPiyasaAcik } from "@/utils/seansKontrol";
 
-const CACHE_TTL = 15 * 60 * 1000;
+const OPEN_MARKET_CACHE_TTL = 2 * 60 * 1000;
+const CLOSED_MARKET_CACHE_TTL = 15 * 60 * 1000;
+
+const getCacheTtl = (): number =>
+  isPiyasaAcik() ? OPEN_MARKET_CACHE_TTL : CLOSED_MARKET_CACHE_TTL;
 
 type CacheEnvelope = {
   data: Hisse[];
@@ -33,7 +38,7 @@ const readCache = async (
     if (!raw) return null;
     const cached = JSON.parse(raw) as CacheEnvelope;
     if (!Array.isArray(cached.data) || typeof cached.ts !== "number") return null;
-    if (allowExpired || Date.now() - cached.ts <= CACHE_TTL) return cached.data;
+    if (allowExpired || Date.now() - cached.ts <= getCacheTtl()) return cached.data;
   } catch {
     return null;
   }
@@ -42,10 +47,15 @@ const readCache = async (
 
 export const useMarketData = (endpoint: string) => {
   const queryClient = useQueryClient();
+  const marketOpen = isPiyasaAcik();
+  const cacheTtl = marketOpen ? OPEN_MARKET_CACHE_TTL : CLOSED_MARKET_CACHE_TTL;
   const query = useQuery<Hisse[], Error>({
     queryKey: ["market-data", endpoint],
-    staleTime: CACHE_TTL,
-    gcTime: CACHE_TTL,
+    staleTime: cacheTtl,
+    gcTime: cacheTtl,
+    refetchInterval: marketOpen ? OPEN_MARKET_CACHE_TTL : false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     queryFn: async () => {
       const freshCache = await readCache(endpoint, false);
       if (freshCache) return freshCache;

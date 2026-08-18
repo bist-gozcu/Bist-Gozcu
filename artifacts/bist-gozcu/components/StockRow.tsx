@@ -192,7 +192,14 @@ export default function StockRow({
 
       {/* Star */}
       {showFavoriteBtn && (
-        <Pressable onPress={handleFav} hitSlop={8} style={styles.starBtn}>
+        <Pressable
+          onPress={handleFav}
+          hitSlop={8}
+          style={styles.starBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`${symbol} ${fav ? "favorilerden çıkar" : "favorilere ekle"}`}
+          testID={`favorite-${symbol}`}
+        >
           <IconStar size={18} color={fav ? colors.neutral : colors.mutedForeground} filled={fav} />
         </Pressable>
       )}

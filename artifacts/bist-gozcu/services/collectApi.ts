@@ -1,12 +1,15 @@
 // Dosya: services/collectApi.ts
 
 import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+import { fetchBatchQuotes } from "@/utils/yahooFinance";
 
 export type Hisse = {
   sembol: string;
   fiyat: number;
   degisimYuzde: number;
   hacim: number;
+  /** Yahoo Finance üç aylık ortalama hacmi; bazı veri kaynaklarında bulunmayabilir. */
+  ortalamaHacim?: number;
 };
 
 export type TemelVeri = {
@@ -19,6 +22,7 @@ type QuoteRecord = {
   regularMarketPrice?: unknown;
   regularMarketChangePercent?: unknown;
   regularMarketVolume?: unknown;
+  averageDailyVolume3Month?: unknown;
 };
 
 type QuoteResponse = {
@@ -60,27 +64,46 @@ export const parseTRNumber = (
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export const getBist100 = async (): Promise<Hisse[]> => {
-  const symbols = ALL_BIST_STOCKS.map((stock) => stock.symbol).join(",");
-  const response = await fetch(
-    `${getApiBase()}/bist/quotes?symbols=${encodeURIComponent(symbols)}`,
-  );
+const normalizeQuote = (quote: QuoteRecord): Hisse => ({
+  sembol: String(quote.symbol ?? "").replace(".IS", "").toUpperCase(),
+  fiyat: parseTRNumber(quote.regularMarketPrice as string | number | null | undefined),
+  degisimYuzde: parseTRNumber(
+    quote.regularMarketChangePercent as string | number | null | undefined,
+  ),
+  hacim: parseTRNumber(quote.regularMarketVolume as string | number | null | undefined),
+  ortalamaHacim: parseTRNumber(
+    quote.averageDailyVolume3Month as string | number | null | undefined,
+  ),
+});
 
-  if (!response.ok) {
-    throw new Error(`Piyasa verisi alınamadı (${response.status})`);
+const validQuotes = (quotes: Hisse[]): Hisse[] =>
+  quotes.filter((quote) => quote.sembol.length > 0 && quote.fiyat > 0);
+
+export const getBist100 = async (): Promise<Hisse[]> => {
+  const stockSymbols = ALL_BIST_STOCKS.map((stock) => stock.symbol);
+  const symbols = stockSymbols.join(",");
+
+  try {
+    const response = await fetch(
+      `${getApiBase()}/bist/quotes?symbols=${encodeURIComponent(symbols)}`,
+    );
+    const contentType = response.headers.get("content-type") ?? "";
+
+    // Expo web dev sunucusu /api için HTML fallback döndürebilir. HTML’i
+    // quote yanıtı gibi parse etmeyip doğrudan güvenli fallback’e geçiyoruz.
+    if (response.ok && contentType.includes("application/json")) {
+      const payload = (await response.json()) as QuoteResponse;
+      const quotes = validQuotes((payload.quoteResponse?.result ?? []).map(normalizeQuote));
+      if (quotes.length > 0) return quotes;
+    }
+  } catch {
+    // Aşağıdaki public Yahoo fallback yolu denenir.
   }
 
-  const payload = (await response.json()) as QuoteResponse;
-  return (payload.quoteResponse?.result ?? [])
-    .map((quote) => ({
-      sembol: String(quote.symbol ?? "").replace(".IS", "").toUpperCase(),
-      fiyat: parseTRNumber(quote.regularMarketPrice as string | number | null | undefined),
-      degisimYuzde: parseTRNumber(
-        quote.regularMarketChangePercent as string | number | null | undefined,
-      ),
-      hacim: parseTRNumber(quote.regularMarketVolume as string | number | null | undefined),
-    }))
-    .filter((quote) => quote.sembol.length > 0 && quote.fiyat > 0);
+  const fallbackQuotes = await fetchBatchQuotes(stockSymbols);
+  return validQuotes(
+    fallbackQuotes.map((quote) => normalizeQuote(quote as QuoteRecord)),
+  );
 };
 
 export const fetchHisseTemelDetay = async (

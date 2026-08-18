@@ -409,3 +409,127 @@ export function getActionAdvice(a: AnalysisResult): string {
   return "Göstergeler net bir yön göstermiyor (birbirini nötrleyen sinyaller var). Bu genelde kararsız/yatay bir piyasa anlamına gelir; net bir sinyal oluşana kadar beklemek, yeni pozisyon açmamak mantıklı olur.";
 }
 
+
+
+export type DailyTrendDirection = "up" | "sideways" | "down";
+
+export interface DailySetupAnalysis {
+  dailyTrend: DailyTrendDirection;
+  resistance: number;
+  resistanceBreakout: boolean;
+  relativeVolume: number;
+  volumeConfirmed: boolean;
+  rsiValue: number;
+  rsiFavorable: boolean;
+  higherHigh: boolean;
+  higherLow: boolean;
+  structureConfirmed: boolean;
+}
+
+const averageOf = (values: number[]): number => {
+  const valid = values.filter((value) => Number.isFinite(value) && value > 0);
+  return valid.length > 0 ? valid.reduce((sum, value) => sum + value, 0) / valid.length : NaN;
+};
+
+/**
+ * Günlük Trade filtresi. Son bar açık seansın kısmi barı olabilir; bu yüzden
+ * mümkün olduğunda n-2, yani son tamamlanmış günlük bar kullanılır.
+ */
+export function analyzeDailySetup(
+  closes: number[],
+  highs: number[],
+  lows: number[],
+  volumes: number[],
+): DailySetupAnalysis {
+  const empty: DailySetupAnalysis = {
+    dailyTrend: "sideways",
+    resistance: NaN,
+    resistanceBreakout: false,
+    relativeVolume: NaN,
+    volumeConfirmed: false,
+    rsiValue: NaN,
+    rsiFavorable: false,
+    higherHigh: false,
+    higherLow: false,
+    structureConfirmed: false,
+  };
+
+  const n = Math.min(closes.length, highs.length, lows.length, volumes.length);
+  if (n < 30) return empty;
+
+  const last = n >= 2 ? n - 2 : n - 1;
+  const lastClose = closes[last];
+  if (!Number.isFinite(lastClose) || lastClose <= 0) return empty;
+
+  const ma20Arr = sma(closes, 20);
+  const ma50Arr = sma(closes, 50);
+  const ma20 = ma20Arr[last];
+  const ma50 = ma50Arr[last];
+  const previousMa20 = ma20Arr[Math.max(0, last - 5)];
+  const dailyTrend: DailyTrendDirection =
+    Number.isFinite(ma20) && Number.isFinite(ma50) && Number.isFinite(previousMa20)
+      ? lastClose > ma20 && ma20 > ma50 && ma20 > previousMa20
+        ? "up"
+        : lastClose < ma20 && ma20 < ma50 && ma20 < previousMa20
+          ? "down"
+          : "sideways"
+      : "sideways";
+
+  const resistanceStart = Math.max(0, last - 20);
+  const resistanceValues = highs
+    .slice(resistanceStart, last)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const resistance = resistanceValues.length > 0 ? Math.max(...resistanceValues) : NaN;
+  const resistanceBreakout =
+    Number.isFinite(resistance) &&
+    lastClose > resistance * 1.003 &&
+    lastClose > (closes[last - 1] ?? 0);
+
+  const volumeWindow = volumes
+    .slice(Math.max(0, last - 20), last)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const averageVolume = averageOf(volumeWindow);
+  const currentVolume = volumes[last] ?? 0;
+  const relativeVolume = averageVolume > 0 ? currentVolume / averageVolume : NaN;
+  const volumeConfirmed = Number.isFinite(relativeVolume) && relativeVolume >= 1.2;
+
+  const rsiValue = rsi(closes)[last] ?? NaN;
+  const rsiFavorable = Number.isFinite(rsiValue) && rsiValue >= 50 && rsiValue <= 72;
+
+  const pivotHighs: number[] = [];
+  const pivotLows: number[] = [];
+  const pivotStart = Math.max(2, last - 60);
+  for (let i = pivotStart; i <= last - 2; i += 1) {
+    const high = highs[i];
+    const low = lows[i];
+    if (!Number.isFinite(high) || !Number.isFinite(low) || high <= 0 || low <= 0) continue;
+    const highIsPivot =
+      high >= highs[i - 1] && high >= highs[i - 2] && high >= highs[i + 1] && high >= highs[i + 2];
+    const lowIsPivot =
+      low <= lows[i - 1] && low <= lows[i - 2] && low <= lows[i + 1] && low <= lows[i + 2];
+    if (highIsPivot) pivotHighs.push(high);
+    if (lowIsPivot) pivotLows.push(low);
+  }
+
+  const previousHigh = pivotHighs.at(-2);
+  const latestHigh = pivotHighs.at(-1);
+  const previousLow = pivotLows.at(-2);
+  const latestLow = pivotLows.at(-1);
+  const higherHigh =
+    previousHigh !== undefined && latestHigh !== undefined && latestHigh > previousHigh * 1.002;
+  const higherLow =
+    previousLow !== undefined && latestLow !== undefined && latestLow > previousLow * 1.002;
+
+  return {
+    dailyTrend,
+    resistance,
+    resistanceBreakout,
+    relativeVolume,
+    volumeConfirmed,
+    rsiValue,
+    rsiFavorable,
+    higherHigh,
+    higherLow,
+    structureConfirmed: higherHigh && higherLow,
+  };
+}
