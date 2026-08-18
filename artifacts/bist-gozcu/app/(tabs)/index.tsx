@@ -129,6 +129,7 @@ export default function MarketScreen() {
                 {" • "}{formatTime(lastUpdated)}
               </Text>
             )}
+            <Text style={[styles.headerHint, { color: colors.mutedForeground }]}>Yıldız: Favoriler · Düzenle: Piyasa listesi</Text>
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -249,6 +250,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
   headerSub: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
+  headerHint: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 11, fontFamily: "Inter_400Regular" },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },

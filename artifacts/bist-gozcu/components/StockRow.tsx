@@ -20,11 +20,11 @@ type SignalDir = "buy" | "sell" | "neutral";
 function getSignal(quote?: StockQuote): SignalDir {
   if (!quote) return "neutral";
   const change = quote.regularMarketChangePercent ?? 0;
-  const price  = quote.regularMarketPrice ?? 0;
-  const open   = quote.regularMarketOpen ?? price;
-  const high   = quote.regularMarketDayHigh ?? price;
-  const low    = quote.regularMarketDayLow ?? price;
-  const prev   = quote.regularMarketPreviousClose ?? price;
+  const price = quote.regularMarketPrice ?? 0;
+  const open = quote.regularMarketOpen ?? price;
+  const high = quote.regularMarketDayHigh ?? price;
+  const low = quote.regularMarketDayLow ?? price;
+  const prev = quote.regularMarketPreviousClose ?? price;
 
   let score = 0;
 
@@ -78,14 +78,14 @@ interface StockRowProps {
   symbol: string;
   quote?: StockQuote;
   showFavoriteBtn?: boolean;
-  onAddToWatchlist?: (symbol: string) => void;
+  onFavoriteAdded?: (symbol: string) => void;
 }
 
 export default function StockRow({
   symbol,
   quote,
   showFavoriteBtn = true,
-  onAddToWatchlist,
+  onFavoriteAdded,
 }: StockRowProps) {
   const colors = useColors();
   const router = useRouter();
@@ -93,21 +93,21 @@ export default function StockRow({
   const meta = getStockMeta(symbol);
   const fav = isFavorite(symbol);
 
-  const price  = quote?.regularMarketPrice;
+  const price = quote?.regularMarketPrice;
   const change = quote?.regularMarketChangePercent;
   const volume = quote?.regularMarketVolume;
   const signal = getSignal(quote);
 
   const changeColor =
     change == null ? colors.mutedForeground :
-    change > 0     ? colors.up :
-    change < 0     ? colors.down :
-                     colors.neutral;
+    change > 0 ? colors.up :
+    change < 0 ? colors.down :
+    colors.neutral;
 
   const signalColor =
-    signal === "buy"  ? colors.up :
+    signal === "buy" ? colors.up :
     signal === "sell" ? colors.down :
-                        colors.neutral;
+    colors.neutral;
 
   const handlePress = () => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
@@ -119,91 +119,85 @@ export default function StockRow({
     if (fav) removeFavorite(symbol);
     else {
       addFavorite(symbol);
-      onAddToWatchlist?.(symbol);
+      onFavoriteAdded?.(symbol);
     }
   };
 
   const formatVolume = (v?: number) => {
     if (!v) return "—";
     if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}Mr`;
-    if (v >= 1_000_000)     return `${(v / 1_000_000).toFixed(1)}M`;
-    if (v >= 1_000)         return `${(v / 1_000).toFixed(0)}K`;
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
     return v.toString();
   };
 
   return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.row,
-        {
-          backgroundColor: pressed ? colors.accent : colors.card,
-          borderBottomColor: colors.border,
-        },
-      ]}
-      onPress={handlePress}
-    >
-      {/* Signal arrow */}
-      <View style={styles.arrowBox}>
-        {quote ? (
-          <SignalArrow direction={signal} color={signalColor} />
-        ) : (
-          <View style={[styles.arrowPlaceholder, { backgroundColor: colors.border }]} />
-        )}
-      </View>
+    <View style={[styles.row, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <Pressable
+        style={({ pressed }) => [styles.rowMain, pressed && { backgroundColor: colors.accent }]}
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={`${symbol} detayını aç`}
+        testID={`stock-row-${symbol}`}
+      >
+        <View style={styles.arrowBox}>
+          {quote ? (
+            <SignalArrow direction={signal} color={signalColor} />
+          ) : (
+            <View style={[styles.arrowPlaceholder, { backgroundColor: colors.border }]} />
+          )}
+        </View>
 
-      {/* Name */}
-      <View style={styles.info}>
-        <Text
-          style={[styles.symbol, { color: colors.foreground }]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
-          {symbol}
-        </Text>
-        <Text
-          style={[styles.name, { color: colors.mutedForeground }]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
-          {meta?.name ?? symbol}
-        </Text>
-      </View>
+        <View style={styles.info}>
+          <Text
+            style={[styles.symbol, { color: colors.foreground }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {symbol}
+          </Text>
+          <Text
+            style={[styles.name, { color: colors.mutedForeground }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {meta?.name ?? symbol}
+          </Text>
+        </View>
 
-      {/* Volume */}
-      <View style={styles.volBox}>
-        <Text style={[styles.vol, { color: colors.mutedForeground }]}>
-          {formatVolume(volume)}
-        </Text>
-      </View>
+        <View style={styles.volBox}>
+          <Text style={[styles.vol, { color: colors.mutedForeground }]}>
+            {formatVolume(volume)}
+          </Text>
+        </View>
 
-      {/* Price + change */}
-      <View style={styles.priceBox}>
-        <Text style={[styles.price, { color: colors.foreground }]}>
-          {price != null ? `₺${price.toFixed(2)}` : "—"}
-        </Text>
-        {change != null && (
-          <View style={[styles.changePill, { backgroundColor: `${changeColor}22` }]}>
-            <Text style={[styles.changeText, { color: changeColor }]}>
-              {change > 0 ? "+" : ""}{change.toFixed(2)}%
-            </Text>
-          </View>
-        )}
-      </View>
+        <View style={styles.priceBox}>
+          <Text style={[styles.price, { color: colors.foreground }]}>
+            {price != null ? `₺${price.toFixed(2)}` : "—"}
+          </Text>
+          {change != null && (
+            <View style={[styles.changePill, { backgroundColor: `${changeColor}22` }]}>
+              <Text style={[styles.changeText, { color: changeColor }]}>
+                {change > 0 ? "+" : ""}{change.toFixed(2)}%
+              </Text>
+            </View>
+          )}
+        </View>
+      </Pressable>
 
-      {/* Star */}
       {showFavoriteBtn && (
         <Pressable
           onPress={handleFav}
-          hitSlop={8}
-          style={styles.starBtn}
+          style={({ pressed }) => [styles.starBtn, pressed && { backgroundColor: colors.accent }]}
           accessibilityRole="button"
           accessibilityLabel={`${symbol} ${fav ? "favorilerden çıkar" : "favorilere ekle"}`}
+          accessibilityHint="Hisseyi Favoriler ekranına ekler veya çıkarır"
           testID={`favorite-${symbol}`}
         >
-          <IconStar size={18} color={fav ? colors.neutral : colors.mutedForeground} filled={fav} />
+          <IconStar size={20} color={fav ? colors.primary : colors.mutedForeground} filled={fav} />
         </Pressable>
       )}
-    </Pressable>
+    </View>
   );
 }
 
@@ -211,9 +205,14 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  rowMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 12,
+    paddingVertical: 11,
   },
   arrowBox: {
     width: 20,
@@ -236,5 +235,12 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   changeText: { fontSize: 11, fontFamily: "Inter_500Medium" },
-  starBtn: { marginLeft: 8 },
+  starBtn: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 4,
+    borderRadius: 26,
+  },
 });

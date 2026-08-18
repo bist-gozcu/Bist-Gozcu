@@ -159,7 +159,6 @@ export default function StockDetailScreen() {
 
   const handleTakibeAl = () => {
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (!fav) addFavorite(symbol ?? "");
     addToWatchlist(symbol ?? "");
   };
 
@@ -342,8 +341,15 @@ export default function StockDetailScreen() {
           headerTitleStyle: { fontFamily: "Inter_700Bold", fontSize: 17 },
           headerShadowVisible: false,
           headerRight: () => (
-            <Pressable onPress={handleFav} hitSlop={10} style={{ marginRight: 4 }}>
-              <IconStar size={20} color={fav ? colors.neutral : colors.mutedForeground} filled={fav} />
+            <Pressable
+              onPress={handleFav}
+              style={({ pressed }) => [styles.headerFavoriteBtn, pressed && { backgroundColor: colors.accent }]}
+              accessibilityRole="button"
+              accessibilityLabel={`${symbol ?? "Hisse"} ${fav ? "favorilerden çıkar" : "favorilere ekle"}`}
+              accessibilityHint="Hisseyi Favoriler ekranına ekler veya çıkarır"
+              testID="stock-detail-favorite"
+            >
+              <IconStar size={21} color={fav ? colors.primary : colors.mutedForeground} filled={fav} />
             </Pressable>
           ),
         }}
@@ -648,7 +654,7 @@ export default function StockDetailScreen() {
           disabled={watched}
         >
           <Text style={[styles.watchBtnText, { color: watched ? colors.up : colors.mutedForeground }]}>
-            {watched ? "Piyasa Listesinde ✓" : "Takibe Al"}
+            {watched ? "Piyasa Listesinde ✓" : "Piyasa Listesine Ekle"}
           </Text>
         </Pressable>
       </View>
@@ -908,6 +914,14 @@ const styles = StyleSheet.create({
   },
   alertChipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
   root: { flex: 1 },
+  headerFavoriteBtn: {
+    width: 52,
+    height: 44,
+    marginRight: 2,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   bottomBar: {
     paddingHorizontal: 14,
     paddingTop: 10,

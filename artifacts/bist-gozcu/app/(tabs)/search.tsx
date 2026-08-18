@@ -13,7 +13,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
-import { useFavorites } from "@/contexts/FavoritesContext";
 import { ALL_BIST_STOCKS, StockMeta } from "@/constants/bistStocks";
 import StockRow from "@/components/StockRow";
 import { IconSearch, IconX } from "@/components/TabIcon";
@@ -24,7 +23,6 @@ export default function SearchScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { quotes } = useStocks();
-  const { addFavorite, isFavorite } = useFavorites();
   const [query, setQuery] = useState("");
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
@@ -42,14 +40,11 @@ export default function SearchScreen() {
     });
   }, [query, selectedSector]);
 
-  const handleAddToWatchlist = useCallback((symbol: string) => {
-    if (!isFavorite(symbol)) {
-      addFavorite(symbol);
-      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setAddedMsg(`${symbol} favorilere eklendi`);
-      setTimeout(() => setAddedMsg(null), 2000);
-    }
-  }, [isFavorite, addFavorite]);
+  const handleFavoriteAdded = useCallback((symbol: string) => {
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAddedMsg(`${symbol} favorilere eklendi`);
+    setTimeout(() => setAddedMsg(null), 2000);
+  }, []);
 
   const handleSector = useCallback((sector: string) => {
     if (Platform.OS !== "web") Haptics.selectionAsync();
@@ -66,9 +61,9 @@ export default function SearchScreen() {
       symbol={item.symbol}
       quote={quotes[item.symbol]}
       showFavoriteBtn
-      onAddToWatchlist={handleAddToWatchlist}
+      onFavoriteAdded={handleFavoriteAdded}
     />
-  ), [quotes, handleAddToWatchlist]);
+  ), [quotes, handleFavoriteAdded]);
 
   const hasFilter = query.length > 0 || selectedSector != null;
 

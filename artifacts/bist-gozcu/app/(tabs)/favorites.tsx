@@ -88,23 +88,8 @@ export default function FavoritesScreen() {
           onDragEnd={({ from, to }) => {
             if (editMode && from !== to) reorder(from, to);
           }}
-          renderItem={({ item, drag, isActive }: RenderItemParams<string>) => (
-            <Pressable
-              onLongPress={() => {
-                if (editMode) drag();
-              }}
-              disabled={!editMode}
-              style={[styles.rowWrap, isActive && { backgroundColor: colors.accent }]}
-            >
-              {editMode && (
-                <Pressable
-                  onPress={() => removeFavorite(item)}
-                  hitSlop={8}
-                  style={styles.deleteBtn}
-                >
-                  <IconMinusCircle color={colors.down} size={22} />
-                </Pressable>
-              )}
+          renderItem={({ item, drag, isActive }: RenderItemParams<string>) => {
+            const row = (
               <View style={styles.rowFlex}>
                 <StockRow
                   symbol={item}
@@ -112,8 +97,34 @@ export default function FavoritesScreen() {
                   showFavoriteBtn={!editMode}
                 />
               </View>
-            </Pressable>
-          )}
+            );
+
+            if (!editMode) return row;
+
+            return (
+              <View style={[styles.rowWrap, isActive && { backgroundColor: colors.accent }]}>
+                <Pressable
+                  onPress={() => removeFavorite(item)}
+                  style={({ pressed }) => [styles.deleteBtn, pressed && { backgroundColor: `${colors.down}18` }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item} favorilerden çıkar`}
+                  accessibilityHint="Hisseyi Favoriler listesinden kaldırır"
+                  testID={`remove-favorite-${item}`}
+                >
+                  <IconMinusCircle color={colors.down} size={24} />
+                </Pressable>
+                <Pressable
+                  onLongPress={drag}
+                  delayLongPress={180}
+                  style={styles.dragArea}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item} sırasını değiştir`}
+                >
+                  {row}
+                </Pressable>
+              </View>
+            );
+          }}
           refreshControl={
             <RefreshControl
               refreshing={manualRefreshing}
@@ -150,7 +161,13 @@ const styles = StyleSheet.create({
   editBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   rowWrap: { flexDirection: "row", alignItems: "center" },
   rowFlex: { flex: 1 },
-  deleteBtn: { paddingLeft: 14, paddingRight: 4 },
+  dragArea: { flex: 1 },
+  deleteBtn: {
+    width: 54,
+    height: 58,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   reorderBtns: { flexDirection: "column", paddingHorizontal: 10, gap: 6 },
   reorderBtn: { padding: 2 },
 });
