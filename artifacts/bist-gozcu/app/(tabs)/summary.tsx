@@ -42,7 +42,8 @@ export default function SummaryScreen() {
 
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 120000);
+    // Makro verileri 5 dakikada bir yenilenir; manuel yenileme düğmesi de kullanılabilir.
+    const timer = setInterval(() => void load(), 300000);
     return () => clearInterval(timer);
   }, [load]);
 

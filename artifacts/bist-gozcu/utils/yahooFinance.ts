@@ -282,16 +282,70 @@ async function fetchProxyChunk(proxyBase: string, symbols: string[]): Promise<Qu
   return [];
 }
 
+async function fetchMacroQuotesDirect(symbols: string[]): Promise<QuoteData[]> {
+  const hosts = ["query2.finance.yahoo.com", "query1.finance.yahoo.com"];
+  const results = await Promise.all(symbols.map(async (symbol) => {
+    for (const host of hosts) {
+      try {
+        const url = `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d&includePrePost=false`;
+        const res = await fetchWithTimeout(url, { headers: YF_HEADERS }, 12_000);
+        if (!res.ok) continue;
+        const json = await res.json() as YahooChartQuote;
+        const result = json.chart?.result?.[0];
+        const meta = result?.meta ?? {};
+        const quote = result?.indicators?.quote?.[0] ?? {};
+        const closes = quote.close ?? [];
+        const validIndexes = closes
+          .map((close, index) => (typeof close === "number" && close > 0 ? index : -1))
+          .filter((index) => index >= 0);
+        const lastIndex = validIndexes.at(-1);
+        if (lastIndex == null) continue;
+        const price = asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
+        const previousClose = asNumber(meta.chartPreviousClose) || asNumber(closes[validIndexes.at(-2) ?? lastIndex]);
+        if (price <= 0) continue;
+        const volumeValues = (quote.volume ?? []).map(asNumber).filter((volume) => volume > 0);
+        const averageVolume = volumeValues.length
+          ? volumeValues.reduce((sum, volume) => sum + volume / volumeValues.length, 0)
+          : 0;
+        const change = price - previousClose;
+        return {
+          symbol: symbol.replace(/\.IS$/i, "").toUpperCase(),
+          shortName: String(meta.shortName ?? meta.longName ?? symbol),
+          regularMarketPrice: price,
+          regularMarketChangePercent: previousClose ? (change / previousClose) * 100 : 0,
+          regularMarketChange: change,
+          regularMarketVolume: asNumber(meta.regularMarketVolume),
+          regularMarketPreviousClose: previousClose,
+          regularMarketOpen: asNumber(meta.regularMarketOpen),
+          regularMarketDayHigh: asNumber(meta.regularMarketDayHigh),
+          regularMarketDayLow: asNumber(meta.regularMarketDayLow),
+          fiftyTwoWeekHigh: asNumber(meta.fiftyTwoWeekHigh),
+          fiftyTwoWeekLow: asNumber(meta.fiftyTwoWeekLow),
+          marketCap: asNumber(meta.marketCap),
+          averageDailyVolume3Month: averageVolume,
+        } as QuoteData;
+      } catch {
+        // Bir Yahoo hostu kota veya ağ hatası verirse diğer host denenir.
+      }
+    }
+    return null;
+  }));
+  return results.filter((quote): quote is QuoteData => quote !== null);
+}
+
 export async function fetchMacroQuotes(symbols: string[]): Promise<QuoteData[]> {
   const proxyBase = getProxyBase();
   try {
     const url = `${proxyBase}/bist/macro?symbols=${symbols.map(encodeURIComponent).join(",")}`;
     const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
-    if (!res.ok) return [];
-    return normalizeProxyResults(await res.json());
+    if (res.ok) {
+      const proxyResults = normalizeProxyResults(await res.json());
+      if (proxyResults.length > 0) return proxyResults;
+    }
   } catch {
-    return [];
+    // Eski proxy sürümlerinde makro rotası olmayabilir; doğrudan chart fallback’i denenir.
   }
+  return fetchMacroQuotesDirect(symbols);
 }
 
 export async function fetchStockOverview(symbol: string): Promise<StockOverview | null> {
