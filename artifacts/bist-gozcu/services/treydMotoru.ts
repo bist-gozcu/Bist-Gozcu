@@ -5,6 +5,7 @@ import { analyzeDailySetup, analyzeStock, DailyTrendDirection } from "@/utils/in
 export type TreydEtiketi = "GÜÇLÜ ALIM" | "MOMENTUM KIRILIMI" | "TAKİP LİSTESİ";
 
 const TOTAL_CONFIRMATIONS = 7;
+const MOMENTUM_CONFIRMATIONS_REQUIRED = 5;
 
 export type TreydSinyali = {
   sembol: string;
@@ -170,9 +171,11 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
       daily.structureConfirmed &&
       technicalBuy &&
       priceMomentum;
+    // Günlük yüzde yükselişi tek başına momentum kabul etmiyoruz.
+    // Momentum etiketi için en az 5/7 teyit ve kırılım/yapı şartı gerekir.
     const momentumBreakout =
       daily.dailyTrend !== "down" &&
-      teyitSayisi >= 4 &&
+      teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED &&
       (daily.resistanceBreakout || daily.structureConfirmed);
     const etiket: TreydEtiketi = strongBuy
       ? "GÜÇLÜ ALIM"

@@ -1,8 +1,20 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ALL_BIST_STOCKS, BIST30 } from "@/constants/bistStocks";
 
-const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol));
+const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol.toUpperCase()));
+
+const normalize = (values: unknown): string[] => {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  return values
+    .map((value) => String(value).trim().toUpperCase())
+    .filter((symbol) => {
+      if (!VALID_SYMBOLS.has(symbol) || seen.has(symbol)) return false;
+      seen.add(symbol);
+      return true;
+    });
+};
 
 interface WatchlistContextType {
   watchlist: string[];
@@ -28,49 +40,49 @@ const DEFAULT_WATCHLIST = BIST30.map((s) => s.symbol);
 export function WatchlistProvider({ children }: { children: React.ReactNode }) {
   const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_WATCHLIST);
   const [ready, setReady] = useState(false);
+  const watchlistRef = useRef<string[]>(DEFAULT_WATCHLIST);
 
   useEffect(() => {
+    let active = true;
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) {
-        const parsed: string[] = JSON.parse(raw);
-        setWatchlist(parsed.filter((s) => VALID_SYMBOLS.has(s)));
-      } else {
-        setWatchlist(DEFAULT_WATCHLIST);
-      }
+      if (!active) return;
+      const parsed = raw ? normalize(JSON.parse(raw)) : normalize(DEFAULT_WATCHLIST);
+      watchlistRef.current = parsed;
+      setWatchlist(parsed);
       setReady(true);
+    }).catch(() => {
+      if (active) setReady(true);
     });
+    return () => { active = false; };
   }, []);
 
   const save = useCallback((data: string[]) => {
-    setWatchlist(data);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const normalized = normalize(data);
+    watchlistRef.current = normalized;
+    setWatchlist(normalized);
+    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   }, []);
 
   const addToWatchlist = useCallback((symbol: string) => {
-    setWatchlist((prev) => {
-      if (prev.includes(symbol)) return prev;
-      const next = [...prev, symbol];
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    if (!VALID_SYMBOLS.has(normalizedSymbol) || watchlistRef.current.includes(normalizedSymbol)) return;
+    save([...watchlistRef.current, normalizedSymbol]);
+  }, [save]);
 
   const removeFromWatchlist = useCallback((symbol: string) => {
-    setWatchlist((prev) => {
-      const next = prev.filter((s) => s !== symbol);
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    save(watchlistRef.current.filter((s) => s !== normalizedSymbol));
+  }, [save]);
 
-  const isWatched = useCallback((symbol: string) => watchlist.includes(symbol), [watchlist]);
+  const isWatched = useCallback((symbol: string) => watchlistRef.current.includes(symbol.trim().toUpperCase()), []);
 
   const reorder = useCallback((from: number, to: number) => {
-    const newList = [...watchlist];
+    const newList = [...watchlistRef.current];
+    if (from < 0 || to < 0 || from >= newList.length || to >= newList.length) return;
     const [moved] = newList.splice(from, 1);
     newList.splice(to, 0, moved);
     save(newList);
-  }, [watchlist, save]);
+  }, [save]);
 
   return (
     <WatchlistContext.Provider

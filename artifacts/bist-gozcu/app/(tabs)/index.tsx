@@ -1,12 +1,17 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +20,8 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useWatchlist } from "@/contexts/WatchlistContext";
+import { fetchMacroQuotes, fetchMarketNews, MarketNews, QuoteData } from "@/utils/yahooFinance";
+import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
 import StockRow from "@/components/StockRow";
 import {
   IconRefresh,
@@ -23,29 +30,63 @@ import {
   IconArrowUp,
   IconArrowDown,
   IconTrash,
+  IconPlus,
+  IconX,
 } from "@/components/TabIcon";
 
 type SortKey = "name" | "price" | "change" | "volume";
 type SortDir = "asc" | "desc";
 
+type MacroAsset = { symbol: string; label: string; unit: string; decimals: number };
+
+const MACRO_ASSETS: MacroAsset[] = [
+  { symbol: "USDTRY=X", label: "Dolar/TL", unit: "₺", decimals: 4 },
+  { symbol: "EURTRY=X", label: "Euro/TL", unit: "₺", decimals: 4 },
+  { symbol: "GC=F", label: "Altın / ons", unit: "$", decimals: 2 },
+  { symbol: "XU030.IS", label: "BIST 30", unit: "", decimals: 2 },
+  { symbol: "XU050.IS", label: "BIST 50", unit: "", decimals: 2 },
+  { symbol: "XU100.IS", label: "BIST 100", unit: "", decimals: 2 },
+];
+
 export default function MarketScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { quotes, loading, refresh, lastUpdated, isMarketOpen } = useStocks();
-  const { watchlist, removeFromWatchlist, reorder } = useWatchlist();
+  const { watchlist, addToWatchlist, removeFromWatchlist, reorder } = useWatchlist();
   const [sortKey, setSortKey] = useState<SortKey>("change");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [editMode, setEditMode] = useState(false);
   const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+  const [macroQuotes, setMacroQuotes] = useState<Record<string, QuoteData>>({});
+  const [marketNews, setMarketNews] = useState<MarketNews[]>([]);
+
+  const loadMacro = useCallback(async () => {
+    const [macro, news] = await Promise.all([
+      fetchMacroQuotes(MACRO_ASSETS.map((asset) => asset.symbol)),
+      fetchMarketNews("Borsa Istanbul", 6),
+    ]);
+    const next: Record<string, QuoteData> = {};
+    macro.forEach((quote) => { next[quote.symbol] = quote; });
+    setMacroQuotes(next);
+    setMarketNews(news);
+  }, []);
+
+  useEffect(() => {
+    void loadMacro();
+    const timer = setInterval(() => void loadMacro(), 120000);
+    return () => clearInterval(timer);
+  }, [loadMacro]);
 
   const handleManualRefresh = useCallback(async () => {
     setManualRefreshing(true);
     try {
-      await refresh();
+      await Promise.all([refresh(), loadMacro()]);
     } finally {
       setManualRefreshing(false);
     }
-  }, [refresh]);
+  }, [loadMacro, refresh]);
 
   const handleSort = (key: SortKey) => {
     if (editMode) return;
@@ -77,6 +118,25 @@ export default function MarketScreen() {
 
   const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
 
+  const formatMacroValue = (asset: MacroAsset, quote?: QuoteData) => {
+    if (!quote?.regularMarketPrice) return "—";
+    return `${asset.unit}${quote.regularMarketPrice.toLocaleString("tr-TR", { minimumFractionDigits: asset.decimals, maximumFractionDigits: asset.decimals })}`;
+  };
+
+  const reportChanges = watchlist
+    .map((symbol) => quotes[symbol]?.regularMarketChangePercent)
+    .filter((value): value is number => Number.isFinite(value));
+  const reportAverage = reportChanges.length
+    ? reportChanges.reduce((sum, value) => sum + value, 0) / reportChanges.length
+    : null;
+  const reportText = reportAverage == null
+    ? "Kapanış/sabah notu için yeterli veri bekleniyor."
+    : reportAverage > 0.5
+      ? `İzleme listesindeki hisselerde ortalama değişim +${reportAverage.toFixed(2)}%. Açılış sonrası yükselişin hacim ve endeks desteğiyle devam edip etmediği teyit edilmelidir; tek günlük yükseliş tek başına alım sinyali değildir.`
+      : reportAverage < -0.5
+        ? `İzleme listesindeki hisselerde ortalama değişim ${reportAverage.toFixed(2)}%. Risk iştahı zayıf görünüyor; destek seviyeleri ve BIST 30/100 yönü görülmeden agresif işlemden kaçınmak daha temkinlidir.`
+        : `İzleme listesindeki hisselerde ortalama değişim ${reportAverage >= 0 ? "+" : ""}${reportAverage.toFixed(2)}%. Piyasa yatay; seçici işlem için hacim, trend ve direnç teyidi beklenmelidir.`;
+
   const handleMove = useCallback((symbol: string, direction: -1 | 1) => {
     const from = watchlist.indexOf(symbol);
     const to = from + direction;
@@ -89,6 +149,12 @@ export default function MarketScreen() {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     removeFromWatchlist(symbol);
   }, [removeFromWatchlist]);
+
+  const availableStocks = ALL_BIST_STOCKS.filter((stock) => {
+    if (watchlist.includes(stock.symbol)) return false;
+    const q = addQuery.trim().toUpperCase();
+    return !q || stock.symbol.includes(q) || stock.name.toUpperCase().includes(q);
+  }).slice(0, 30);
 
   const SortBtn = ({ label, k }: { label: string; k: SortKey }) => (
     <Pressable onPress={() => handleSort(k)} style={styles.sortBtn}>
@@ -118,7 +184,7 @@ export default function MarketScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <View>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Piyasa</Text>
+          <Text style={[styles.headerTitle, { color: colors.foreground }]}>BIST Hisseleri</Text>
           <View style={styles.headerSub}>
             <View style={[styles.statusDot, { backgroundColor: isMarketOpen ? colors.up : colors.mutedForeground }]} />
             <Text style={[styles.statusText, { color: colors.mutedForeground }]}>
@@ -162,6 +228,43 @@ export default function MarketScreen() {
         </View>
       </View>
 
+      <View style={styles.macroSection}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Piyasa Özeti</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.macroRow}>
+          {MACRO_ASSETS.map((asset) => {
+            const key = asset.symbol.replace(/\\.IS$/i, "").toUpperCase();
+            const quote = macroQuotes[key] ?? macroQuotes[asset.symbol];
+            const change = quote?.regularMarketChangePercent;
+            const tone = change == null ? colors.mutedForeground : change >= 0 ? colors.up : colors.down;
+            return (
+              <View key={asset.symbol} style={[styles.macroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.macroLabel, { color: colors.mutedForeground }]}>{asset.label}</Text>
+                <Text style={[styles.macroValue, { color: colors.foreground }]}>{formatMacroValue(asset, quote)}</Text>
+                <Text style={[styles.macroChange, { color: tone }]}>{change == null ? "Veri bekleniyor" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+        <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.reportTitle, { color: colors.foreground }]}>{isMarketOpen ? "Gün içi piyasa notu" : "Kapanış / sabah notu"}</Text>
+          <Text style={[styles.reportText, { color: colors.mutedForeground }]}>{reportText}</Text>
+        </View>
+        {marketNews.length > 0 && (
+          <View style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.reportTitle, { color: colors.foreground }]}>Piyasa haberleri</Text>
+            {marketNews.slice(0, 4).map((item, index) => (
+              <Pressable key={`${item.title}-${index}`} disabled={!item.link} onPress={() => item.link && Linking.openURL(item.link)} style={styles.newsRow}>
+                <View style={[styles.newsDot, { backgroundColor: colors.primary }]} />
+                <View style={styles.newsCopy}>
+                  <Text style={[styles.newsTitle, { color: colors.foreground }]} numberOfLines={2}>{item.title}</Text>
+                  <Text style={[styles.newsMeta, { color: colors.mutedForeground }]}>{item.publisher || "Kaynak belirtilmedi"}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
+
       {/* Sort row */}
       {!editMode && (
         <View style={[styles.sortRow, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
@@ -178,8 +281,62 @@ export default function MarketScreen() {
           <Text style={[styles.editHintText, { color: colors.mutedForeground }]}>
             Sıralamak için ok tuşlarını kullanın, silmek için sola kaydırın
           </Text>
+          <Pressable
+            onPress={() => { setAddQuery(""); setShowAddModal(true); }}
+            style={[styles.addStockBtn, { backgroundColor: colors.primary }]}
+          >
+            <IconPlus color={colors.primaryForeground} size={14} />
+            <Text style={[styles.addStockBtnText, { color: colors.primaryForeground }]}>Hisse ekle</Text>
+          </Pressable>
         </View>
       )}
+
+      <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={() => setShowAddModal(false)}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior="padding" style={styles.modalKeyboard}>
+            <View style={[styles.addModal, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 14 }]}>
+              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Piyasa listesine hisse ekle</Text>
+                  <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>{watchlist.length} hisse listede</Text>
+                </View>
+                <Pressable onPress={() => setShowAddModal(false)} hitSlop={10} style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
+                  <IconX color={colors.mutedForeground} size={15} />
+                </Pressable>
+              </View>
+              <TextInput
+                autoFocus
+                value={addQuery}
+                onChangeText={setAddQuery}
+                placeholder="Sembol veya şirket ara"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.addInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
+                returnKeyType="search"
+              />
+              <FlatList
+                data={availableStocks}
+                keyExtractor={(item) => item.symbol}
+                keyboardShouldPersistTaps="handled"
+                style={styles.addResults}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => { addToWatchlist(item.symbol); setShowAddModal(false); }}
+                    style={({ pressed }) => [styles.addResultRow, { borderBottomColor: colors.border }, pressed && { opacity: 0.65 }]}
+                  >
+                    <View style={styles.addResultCopy}>
+                      <Text style={[styles.addResultSymbol, { color: colors.foreground }]}>{item.symbol}</Text>
+                      <Text style={[styles.addResultName, { color: colors.mutedForeground }]} numberOfLines={1}>{item.name}</Text>
+                    </View>
+                    <IconPlus color={colors.primary} size={18} />
+                  </Pressable>
+                )}
+                ListEmptyComponent={<Text style={[styles.addEmpty, { color: colors.mutedForeground }]}>Eklenecek hisse bulunamadı.</Text>}
+              />
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
 
       {loading && Object.keys(quotes).length === 0 ? (
         <View style={styles.center}>
@@ -248,7 +405,23 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  headerTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  macroSection: { paddingTop: 10, paddingBottom: 4 },
+  sectionTitle: { paddingHorizontal: 14, fontSize: 14, fontFamily: "Inter_700Bold", marginBottom: 8 },
+  macroRow: { paddingHorizontal: 12, gap: 8 },
+  macroCard: { width: 132, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 10 },
+  macroLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  macroValue: { fontSize: 16, fontFamily: "Inter_700Bold", marginTop: 5 },
+  macroChange: { fontSize: 11, fontFamily: "Inter_600SemiBold", marginTop: 3 },
+  reportCard: { marginHorizontal: 12, marginTop: 10, padding: 11, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  reportTitle: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 4 },
+  reportText: { fontSize: 11, lineHeight: 16, fontFamily: "Inter_400Regular" },
+  newsCard: { marginHorizontal: 12, marginTop: 8, padding: 11, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  newsRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(127,127,127,0.18)" },
+  newsDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
+  newsCopy: { flex: 1 },
+  newsTitle: { fontSize: 12, lineHeight: 16, fontFamily: "Inter_600SemiBold" },
+  newsMeta: { fontSize: 10, marginTop: 3, fontFamily: "Inter_400Regular" },
   headerSub: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   headerHint: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
@@ -275,8 +448,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  editHintText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  editHintText: { flex: 1, fontSize: 11, fontFamily: "Inter_400Regular" },
+  addStockBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 7 },
+  addStockBtnText: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.58)" },
+  modalKeyboard: { width: "100%", justifyContent: "flex-end" },
+  addModal: { maxHeight: "86%", borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 10 },
+  modalHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 14 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
+  modalTitle: { fontSize: 17, fontFamily: "Inter_700Bold" },
+  modalSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 3 },
+  modalCloseBtn: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  addInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, fontFamily: "Inter_400Regular", marginBottom: 8 },
+  addResults: { maxHeight: 380 },
+  addResultRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  addResultCopy: { flex: 1, marginRight: 10 },
+  addResultSymbol: { fontSize: 14, fontFamily: "Inter_700Bold" },
+  addResultName: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  addEmpty: { textAlign: "center", paddingVertical: 24, fontSize: 13, fontFamily: "Inter_400Regular" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { fontSize: 13, fontFamily: "Inter_400Regular" },
   rowWrap: { flexDirection: "row", alignItems: "center" },

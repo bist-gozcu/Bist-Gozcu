@@ -26,6 +26,14 @@ export interface ChartResult {
 }
 
 export type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y";
+
+export interface MarketNews {
+  title: string;
+  publisher: string;
+  link: string;
+  providerPublishTime: number;
+  type: string;
+}
 export type IntradayInterval = "5m" | "10m" | "15m" | "60m";
 
 import { Platform } from "react-native";
@@ -245,6 +253,31 @@ async function fetchProxyChunk(proxyBase: string, symbols: string[]): Promise<Qu
     }
   }
   return [];
+}
+
+export async function fetchMacroQuotes(symbols: string[]): Promise<QuoteData[]> {
+  const proxyBase = getProxyBase();
+  try {
+    const url = `${proxyBase}/bist/macro?symbols=${symbols.map(encodeURIComponent).join(",")}`;
+    const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
+    if (!res.ok) return [];
+    return normalizeProxyResults(await res.json());
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchMarketNews(query = "BIST Borsa Istanbul Türkiye ekonomi", count = 8): Promise<MarketNews[]> {
+  const proxyBase = getProxyBase();
+  try {
+    const url = `${proxyBase}/bist/news?q=${encodeURIComponent(query)}&count=${Math.min(Math.max(count, 1), 12)}`;
+    const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
+    if (!res.ok) return [];
+    const payload = await res.json() as { news?: MarketNews[] };
+    return Array.isArray(payload.news) ? payload.news : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> {

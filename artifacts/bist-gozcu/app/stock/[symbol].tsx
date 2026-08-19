@@ -675,7 +675,11 @@ export default function StockDetailScreen() {
         onRequestClose={() => setShowAlarmModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+          <KeyboardAvoidingView
+            behavior="padding"
+            keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+            style={styles.keyboardLayer}
+          >
             <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
               <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
               <View style={styles.modalHeader}>
@@ -686,6 +690,11 @@ export default function StockDetailScreen() {
                 <Pressable onPress={() => setShowAlarmModal(false)} hitSlop={12} style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
                   <IconX color={colors.mutedForeground} size={15} />
                 </Pressable>
+              </View>
+
+              <View style={styles.modalTopNotice}>
+                <Text style={[styles.modalTopNoticeTitle, { color: colors.foreground }]}>Alarm ayarı</Text>
+                <Text style={[styles.modalTopNoticeText, { color: colors.mutedForeground }]}>Hedef fiyatı girin; klavye açıldığında alanlar yukarıda kalır.</Text>
               </View>
 
               <View style={styles.field}>
@@ -938,6 +947,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     backgroundColor: "rgba(0,0,0,0.55)",
   },
+  keyboardLayer: { width: "100%", justifyContent: "flex-end" },
   modalSheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -945,7 +955,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
     gap: 12,
+    maxHeight: "92%",
   },
+  modalTopNotice: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: "rgba(127,127,127,0.10)" },
+  modalTopNoticeTitle: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  modalTopNoticeText: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   modalHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 4 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },

@@ -49,8 +49,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Piyasa",
-          tabBarLabel: "Piyasa",
+          title: "BIST Hisseleri",
+          tabBarLabel: "BIST Hisseleri",
           tabBarIcon: ({ color }) => <IconBarChart color={color} size={22} />,
         }}
       />

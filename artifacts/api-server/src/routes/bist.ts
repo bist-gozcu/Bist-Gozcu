@@ -113,6 +113,48 @@ const RANGE_CONFIG: Record<string, { days: number; interval: YfInterval }> = {
 
 const ALLOWED_INTRADAY_INTERVALS: YfInterval[] = ["5m", "15m", "60m"];
 
+router.get("/bist/macro", async (req, res) => {
+  try {
+    const { symbols } = req.query;
+    if (!symbols || typeof symbols !== "string") {
+      res.status(400).json({ error: "symbols required" });
+      return;
+    }
+    const symbolList = symbols.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    const results = await Promise.all(symbolList.map(quoteWithFallback));
+    const normalized = results
+      .filter((quote): quote is NonNullable<typeof quote> => quote != null)
+      .map((quote) => ({
+        ...quote,
+        symbol: String(quote.symbol ?? "").toUpperCase(),
+      }));
+    res.json({ quoteResponse: { result: normalized, error: null } });
+  } catch (err) {
+    res.status(502).json({ error: "macro upstream error", detail: String(err) });
+  }
+});
+
+router.get("/bist/news", async (req, res) => {
+  try {
+    const query = typeof req.query.q === "string" && req.query.q.trim()
+      ? req.query.q.trim()
+      : "Borsa Istanbul";
+    const requestedCount = Number(req.query.count ?? 8);
+    const count = Number.isFinite(requestedCount) ? Math.min(Math.max(Math.floor(requestedCount), 1), 12) : 8;
+    const searchResult = await (yf as any).search(query, { newsCount: count, quotesCount: 0 });
+    const news = Array.isArray(searchResult?.news) ? searchResult.news.slice(0, count).map((item: any) => ({
+      title: String(item.title ?? ""),
+      publisher: String(item.publisher ?? ""),
+      link: typeof item.link === "string" ? item.link : "",
+      providerPublishTime: Number(item.providerPublishTime ?? 0),
+      type: String(item.type ?? "NEWS"),
+    })).filter((item: { title: string }) => item.title.length > 0) : [];
+    res.json({ news });
+  } catch (err) {
+    res.status(502).json({ error: "news upstream error", detail: String(err) });
+  }
+});
+
 router.get("/bist/chart/:symbol", async (req, res) => {
   try {
     const { symbol } = req.params;
