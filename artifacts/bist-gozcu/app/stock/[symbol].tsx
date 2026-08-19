@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,7 +21,7 @@ import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useWatchlist } from "@/contexts/WatchlistContext";
 import { AlertType, useAlerts } from "@/contexts/AlertContext";
-import { fetchChartData, ChartResult, ChartRange, getMarketSession } from "@/utils/yahooFinance";
+import { fetchChartData, fetchStockOverview, ChartResult, ChartRange, getMarketSession, StockOverview } from "@/utils/yahooFinance";
 import {
   analyzeStock,
   AnalysisResult,
@@ -122,6 +123,8 @@ export default function StockDetailScreen() {
   const { alerts, addAlert, removeAlert } = useAlerts();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [stockOverview, setStockOverview] = useState<StockOverview | null>(null);
+  const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
   const [range, setRange] = useState<ChartRange>("1d");
   const [showAlarmModal, setShowAlarmModal] = useState(false);
@@ -130,10 +133,16 @@ export default function StockDetailScreen() {
   const [alarmNote, setAlarmNote] = useState("");
   const [infoKey, setInfoKey] = useState<string | null>(null);
 
-  const quote = quotes[symbol ?? ""];
+  const quote = quotes[symbol ?? ""] ?? stockOverview?.quote;
   const meta = getStockMeta(symbol ?? "");
   const fav = favorites.includes((symbol ?? "").trim().toUpperCase());
   const session = getMarketSession();
+
+  useEffect(() => {
+    if (!symbol) return;
+    setLoadingOverview(true);
+    fetchStockOverview(symbol).then((data) => setStockOverview(data)).finally(() => setLoadingOverview(false));
+  }, [symbol]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -331,6 +340,28 @@ export default function StockDetailScreen() {
   })();
 
   const activeAlerts = symbolAlerts.filter((a) => !a.triggered);
+  const fundamentals = stockOverview?.fundamentals;
+  const formatRatio = (value: number | null | undefined, suffix = "") => value == null ? "—" : `${value.toFixed(2)}${suffix}`;
+  const formatRatioPercent = (value: number | null | undefined) => value == null ? "—" : `${(value * 100).toFixed(1)}%`;
+  const targetUpside = price != null && fundamentals?.targetMeanPrice != null && price > 0
+    ? ((fundamentals.targetMeanPrice - price) / price) * 100
+    : null;
+  const valuationTitle = targetUpside != null
+    ? targetUpside >= 15
+      ? "Hedef fiyata göre iskontolu görünüyor"
+      : targetUpside <= -15
+        ? "Hedef fiyata göre primli görünüyor"
+        : "Hedef fiyata göre dengeli görünüyor"
+    : fundamentals?.priceToBook != null && fundamentals.priceToBook < 1
+      ? "PD/DD düşük; tek başına ucuzluk kanıtı değil"
+      : fundamentals?.priceToBook != null && fundamentals.priceToBook > 3
+        ? "PD/DD yüksek; primli değerleme riski var"
+        : "Göreli değerleme için veri bekleniyor";
+  const valuationText = targetUpside != null
+    ? `Analist ortalama hedefi ₺${fundamentals?.targetMeanPrice?.toFixed(2)}; mevcut fiyata göre ${targetUpside >= 0 ? "+" : ""}${targetUpside.toFixed(1)}% fark var. Bu hedef garanti değildir ve analist kapsamı ${fundamentals?.analystCount ?? "bilinmiyor"} kişi olabilir.`
+    : fundamentals?.priceToBook != null
+      ? `PD/DD ${fundamentals.priceToBook.toFixed(2)}. Ucuz/pahalı yorumu için sektör ortalaması, borçluluk ve kârlılık birlikte değerlendirilmelidir.`
+      : "Temel oranlar bu kaynakta bulunamadı; bu nedenle ucuz veya pahalı hükmü verilmiyor.";
 
   const sessionLabel =
     session === "open" ? "Açık" :
@@ -613,14 +644,52 @@ export default function StockDetailScreen() {
           )}
         </View>
 
-        {/* Morning Report */}
+        {/* Relative valuation */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Sabah Raporu</Text>
-          <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.reportText, { color: colors.mutedForeground }]}>
-              {morningReport}
-            </Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Temel / Göreli Değerleme</Text>
+          <View style={[styles.valuationCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.valuationTitle, { color: targetUpside != null && targetUpside >= 15 ? colors.up : targetUpside != null && targetUpside <= -15 ? colors.down : colors.foreground }]}>{valuationTitle}</Text>
+            <Text style={[styles.valuationText, { color: colors.mutedForeground }]}>{loadingOverview ? "Temel oranlar yükleniyor…" : valuationText}</Text>
+            <View style={styles.fundamentalGrid}>
+              <StatRow label="F/K" value={formatRatio(fundamentals?.trailingPE)} />
+              <StatRow label="İleri F/K" value={formatRatio(fundamentals?.forwardPE)} />
+              <StatRow label="PD/DD" value={formatRatio(fundamentals?.priceToBook)} />
+              <StatRow label="PD/S" value={formatRatio(fundamentals?.priceToSales)} />
+              <StatRow label="Özsermaye kârlılığı" value={formatRatioPercent(fundamentals?.returnOnEquity)} />
+              <StatRow label="Borç/Özsermaye" value={formatRatio(fundamentals?.debtToEquity)} />
+            </View>
+            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>F/K ve PD/DD gibi oranlar kaynakta bulunamazsa “—” gösterilir; sektör karşılaştırması olmadan kesin ucuz/pahalı kararı verilmez.</Text>
           </View>
+        </View>
+
+        {/* Hisse-specific morning report */}
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Hisseye Özel Sabah Raporu</Text>
+          <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.reportText, { color: colors.mutedForeground }]}>{morningReport}</Text>
+          </View>
+        </View>
+
+        {/* Stock-specific news */}
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Hisse Haberleri</Text>
+          {loadingOverview ? (
+            <ActivityIndicator color={colors.primary} style={{ margin: 18 }} />
+          ) : stockOverview?.news.length ? (
+            <View style={[styles.stockNewsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {stockOverview.news.map((item, index) => (
+                <Pressable key={`${item.title}-${index}`} disabled={!item.link} onPress={() => item.link && Linking.openURL(item.link)} style={[styles.stockNewsRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                  <View style={[styles.newsDot, { backgroundColor: colors.primary }]} />
+                  <View style={styles.newsCopy}>
+                    <Text style={[styles.newsTitle, { color: colors.foreground }]} numberOfLines={3}>{item.title}</Text>
+                    <Text style={[styles.newsMeta, { color: colors.mutedForeground }]}>{item.publisher || "Kaynak belirtilmedi"}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.noNewsText, { color: colors.mutedForeground }]}>Bu hisse için kaynakta doğrulanmış haber bulunamadı.</Text>
+          )}
         </View>
 
         {/* Active Alerts */}
@@ -891,6 +960,18 @@ const styles = StyleSheet.create({
   performancePercent: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginTop: 2 },
   reportCard: { borderRadius: 12, padding: 14, borderWidth: StyleSheet.hairlineWidth },
   reportText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 21 },
+  valuationCard: { borderRadius: 12, padding: 14, borderWidth: StyleSheet.hairlineWidth },
+  valuationTitle: { fontSize: 14, fontFamily: "Inter_700Bold", lineHeight: 20, marginBottom: 5 },
+  valuationText: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 8 },
+  fundamentalGrid: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(127,127,127,0.2)", marginTop: 4, paddingTop: 4 },
+  dataBasis: { fontSize: 10, lineHeight: 15, fontFamily: "Inter_400Regular", marginTop: 8 },
+  stockNewsCard: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
+  stockNewsRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 11 },
+  newsDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
+  newsCopy: { flex: 1 },
+  newsTitle: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_600SemiBold" },
+  newsMeta: { fontSize: 10, marginTop: 4, fontFamily: "Inter_400Regular" },
+  noNewsText: { fontSize: 12, lineHeight: 18, fontFamily: "Inter_400Regular" },
   alertChip: {
     flexDirection: "row",
     alignItems: "center",

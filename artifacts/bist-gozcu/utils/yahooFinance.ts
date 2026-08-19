@@ -34,6 +34,33 @@ export interface MarketNews {
   providerPublishTime: number;
   type: string;
 }
+
+export interface StockFundamentals {
+  trailingPE: number | null;
+  forwardPE: number | null;
+  priceToBook: number | null;
+  priceToSales: number | null;
+  enterpriseToEbitda: number | null;
+  bookValue: number | null;
+  returnOnEquity: number | null;
+  profitMargins: number | null;
+  revenueGrowth: number | null;
+  earningsGrowth: number | null;
+  debtToEquity: number | null;
+  dividendYield: number | null;
+  targetMeanPrice: number | null;
+  recommendationMean: number | null;
+  analystCount: number | null;
+  asOf: string | null;
+}
+
+export interface StockOverview {
+  symbol: string;
+  quote?: QuoteData;
+  fundamentals: StockFundamentals;
+  news: MarketNews[];
+  source: string;
+}
 export type IntradayInterval = "5m" | "10m" | "15m" | "60m";
 
 import { Platform } from "react-native";
@@ -267,7 +294,35 @@ export async function fetchMacroQuotes(symbols: string[]): Promise<QuoteData[]> 
   }
 }
 
-export async function fetchMarketNews(query = "BIST Borsa Istanbul Türkiye ekonomi", count = 8): Promise<MarketNews[]> {
+export async function fetchStockOverview(symbol: string): Promise<StockOverview | null> {
+  const proxyBase = getProxyBase();
+  try {
+    const url = `${proxyBase}/bist/stock/${encodeURIComponent(symbol.trim().toUpperCase())}/overview`;
+    const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
+    if (!res.ok) return null;
+    const payload = await res.json() as Partial<StockOverview> & { quote?: Record<string, unknown> };
+    const normalizedQuote = payload.quote
+      ? normalizeProxyResults({ quoteResponse: { result: [payload.quote] } })[0]
+      : undefined;
+    return {
+      symbol: String(payload.symbol ?? symbol).replace(/\.IS$/i, "").toUpperCase(),
+      quote: normalizedQuote,
+      fundamentals: payload.fundamentals ?? {
+        trailingPE: null, forwardPE: null, priceToBook: null, priceToSales: null,
+        enterpriseToEbitda: null, bookValue: null, returnOnEquity: null,
+        profitMargins: null, revenueGrowth: null, earningsGrowth: null,
+        debtToEquity: null, dividendYield: null, targetMeanPrice: null,
+        recommendationMean: null, analystCount: null, asOf: null,
+      },
+      news: Array.isArray(payload.news) ? payload.news : [],
+      source: String(payload.source ?? "BIST Gözcü proxy"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchMarketNews(query = "Borsa Istanbul", count = 8): Promise<MarketNews[]> {
   const proxyBase = getProxyBase();
   try {
     const url = `${proxyBase}/bist/news?q=${encodeURIComponent(query)}&count=${Math.min(Math.max(count, 1), 12)}`;

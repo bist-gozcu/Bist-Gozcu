@@ -1,0 +1,150 @@
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Linking, RefreshControl, ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useColors } from "@/hooks/useColors";
+import { fetchMacroQuotes, fetchMarketNews, MarketNews, QuoteData } from "@/utils/yahooFinance";
+import { IconRefresh } from "@/components/TabIcon";
+
+type MacroAsset = { symbol: string; label: string; unit: string; decimals: number };
+
+const MACRO_ASSETS: MacroAsset[] = [
+  { symbol: "USDTRY=X", label: "Dolar / TL", unit: "₺", decimals: 4 },
+  { symbol: "EURTRY=X", label: "Euro / TL", unit: "₺", decimals: 4 },
+  { symbol: "GC=F", label: "Altın / ons", unit: "$", decimals: 2 },
+  { symbol: "XU030.IS", label: "BIST 30", unit: "", decimals: 2 },
+  { symbol: "XU050.IS", label: "BIST 50", unit: "", decimals: 2 },
+  { symbol: "XU100.IS", label: "BIST 100", unit: "", decimals: 2 },
+];
+
+const normalizeSymbol = (symbol: string) => symbol.replace(/\.IS$/i, "").toUpperCase();
+
+export default function SummaryScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const [quotes, setQuotes] = useState<Record<string, QuoteData>>({});
+  const [news, setNews] = useState<MarketNews[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const load = useCallback(async () => {
+    const [macro, latestNews] = await Promise.all([
+      fetchMacroQuotes(MACRO_ASSETS.map((asset) => asset.symbol)),
+      fetchMarketNews("Borsa Istanbul", 8),
+    ]);
+    const next: Record<string, QuoteData> = {};
+    macro.forEach((quote) => { next[normalizeSymbol(quote.symbol)] = quote; });
+    setQuotes(next);
+    setNews(latestNews);
+    setLastUpdated(new Date());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), 120000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await load(); } finally { setRefreshing(false); }
+  }, [load]);
+
+  const formatValue = (asset: MacroAsset, quote?: QuoteData) => {
+    if (!quote || !Number.isFinite(quote.regularMarketPrice) || quote.regularMarketPrice <= 0) return "—";
+    return `${asset.unit}${quote.regularMarketPrice.toLocaleString("tr-TR", { minimumFractionDigits: asset.decimals, maximumFractionDigits: asset.decimals })}`;
+  };
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}> 
+      <ScrollView
+        contentContainerStyle={{ paddingTop: 12, paddingBottom: insets.bottom + 92 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.title, { color: colors.foreground }]}>Piyasa Özeti</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Döviz, altın ve BIST endeksleri</Text>
+          </View>
+          <Pressable onPress={refresh} hitSlop={10} style={[styles.refreshButton, { backgroundColor: colors.secondary }]}>
+            <IconRefresh color={colors.mutedForeground} size={16} />
+          </Pressable>
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Makro Göstergeler</Text>
+        <View style={styles.grid}>
+          {MACRO_ASSETS.map((asset) => {
+            const quote = quotes[normalizeSymbol(asset.symbol)];
+            const change = quote?.regularMarketChangePercent;
+            const changeColor = change == null ? colors.mutedForeground : change >= 0 ? colors.up : colors.down;
+            return (
+              <View key={asset.symbol} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+                <Text style={[styles.cardLabel, { color: colors.mutedForeground }]}>{asset.label}</Text>
+                <Text style={[styles.cardValue, { color: colors.foreground }]}>{formatValue(asset, quote)}</Text>
+                <Text style={[styles.cardChange, { color: changeColor }]}>
+                  {change == null ? (loading ? "Yükleniyor" : "Veri yok") : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={[styles.disclaimer, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+          <Text style={[styles.disclaimerTitle, { color: colors.foreground }]}>Nasıl okunmalı?</Text>
+          <Text style={[styles.disclaimerText, { color: colors.mutedForeground }]}>Makro kartlar yön hakkında bağlam sağlar; tek başına alım veya satım sinyali değildir. Döviz ve altın verileri farklı piyasaların gecikmeli kotasyonları olabilir.</Text>
+        </View>
+
+        <View style={styles.newsHeader}>
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.foreground, paddingHorizontal: 0, marginBottom: 2 }]}>Borsa Istanbul haberleri</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Kaynakta gerçek haber yoksa kart gösterilmez.</Text>
+          </View>
+          {lastUpdated && <Text style={[styles.updated, { color: colors.mutedForeground }]}>{lastUpdated.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</Text>}
+        </View>
+        {news.length === 0 ? (
+          <Text style={[styles.empty, { color: colors.mutedForeground }]}>{loading ? "Haberler yükleniyor…" : "Bu sorgu için doğrulanmış haber bulunamadı."}</Text>
+        ) : (
+          <View style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+            {news.map((item, index) => (
+              <Pressable key={`${item.title}-${index}`} disabled={!item.link} onPress={() => item.link && Linking.openURL(item.link)} style={[styles.newsRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}> 
+                <View style={[styles.newsDot, { backgroundColor: colors.primary }]} />
+                <View style={styles.newsCopy}>
+                  <Text style={[styles.newsTitle, { color: colors.foreground }]} numberOfLines={3}>{item.title}</Text>
+                  <Text style={[styles.newsMeta, { color: colors.mutedForeground }]}>{item.publisher || "Kaynak belirtilmedi"}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  header: { paddingHorizontal: 16, paddingBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  title: { fontSize: 25, fontFamily: "Inter_700Bold" },
+  subtitle: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 3 },
+  refreshButton: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  sectionTitle: { paddingHorizontal: 16, fontSize: 16, fontFamily: "Inter_700Bold", marginBottom: 10 },
+  grid: { paddingHorizontal: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  card: { width: "31.9%", minWidth: 105, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 10 },
+  cardLabel: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  cardValue: { fontSize: 16, fontFamily: "Inter_700Bold", marginTop: 7 },
+  cardChange: { fontSize: 11, fontFamily: "Inter_600SemiBold", marginTop: 4 },
+  disclaimer: { marginHorizontal: 12, marginTop: 12, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, padding: 12 },
+  disclaimerTitle: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 4 },
+  disclaimerText: { fontSize: 11, lineHeight: 16, fontFamily: "Inter_400Regular" },
+  newsHeader: { paddingHorizontal: 16, marginTop: 22, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
+  updated: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  empty: { paddingHorizontal: 16, paddingVertical: 18, fontSize: 12, fontFamily: "Inter_400Regular" },
+  newsCard: { marginHorizontal: 12, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
+  newsRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 11 },
+  newsDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
+  newsCopy: { flex: 1 },
+  newsTitle: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_600SemiBold" },
+  newsMeta: { fontSize: 10, marginTop: 4, fontFamily: "Inter_400Regular" },
+});

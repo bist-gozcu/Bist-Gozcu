@@ -55,6 +55,14 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="summary"
+        options={{
+          title: "Piyasa Özeti",
+          tabBarLabel: "Özet",
+          tabBarIcon: ({ color }) => <IconTrendingUp color={color} size={22} />,
+        }}
+      />
+      <Tabs.Screen
         name="favorites"
         options={{
           title: "Favoriler",

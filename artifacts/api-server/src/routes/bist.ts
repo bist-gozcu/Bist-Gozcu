@@ -26,7 +26,11 @@ const numberOrZero = (value: unknown): number =>
 
 async function chartFallbackQuote(symbol: string): Promise<ChartQuote | null> {
   try {
-    const result = await yf.chart(symbol, {
+    const normalizedSymbol = symbol.replace(/^\^/, "^").toUpperCase();
+    const yahooSymbol = normalizedSymbol.includes("=") || normalizedSymbol.startsWith("^") || normalizedSymbol.endsWith(".IS")
+      ? normalizedSymbol
+      : `${normalizedSymbol}.IS`;
+    const result = await yf.chart(yahooSymbol, {
       period1: new Date(Date.now() - 90 * 86400000),
       interval: "1d",
     });
@@ -44,8 +48,8 @@ async function chartFallbackQuote(symbol: string): Promise<ChartQuote | null> {
       : 0;
 
     return {
-      symbol: symbol.replace(".IS", ""),
-      shortName: symbol.replace(".IS", ""),
+      symbol: yahooSymbol.replace(/\.IS$/i, ""),
+      shortName: yahooSymbol.replace(/\.IS$/i, ""),
       regularMarketPrice: price,
       regularMarketChangePercent: previousClose ? (change / previousClose) * 100 : 0,
       regularMarketChange: change,
@@ -152,6 +156,80 @@ router.get("/bist/news", async (req, res) => {
     res.json({ news });
   } catch (err) {
     res.status(502).json({ error: "news upstream error", detail: String(err) });
+  }
+});
+
+function rawNumber(value: unknown): number | null {
+  const raw = value && typeof value === "object" && "raw" in value
+    ? (value as { raw?: unknown }).raw
+    : value;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+function summaryValue(summary: any, group: string, field: string): number | null {
+  return rawNumber(summary?.[group]?.[field]);
+}
+
+router.get("/bist/stock/:symbol/overview", async (req, res) => {
+  const baseSymbol = String(req.params.symbol ?? "").replace(/\.IS$/i, "").toUpperCase();
+  if (!baseSymbol) {
+    res.status(400).json({ error: "symbol required" });
+    return;
+  }
+  const yahooSymbol = `${baseSymbol}.IS`;
+  try {
+    const [quote, summary, searchResult] = await Promise.all([
+      quoteWithFallback(yahooSymbol),
+      (yf as any).quoteSummary(yahooSymbol, {
+        modules: ["price", "summaryDetail", "defaultKeyStatistics", "financialData"],
+      }).catch(() => null),
+      (yf as any).search(baseSymbol, { newsCount: 8, quotesCount: 0 }).catch(() => null),
+    ]);
+
+    const candidateNews = Array.isArray(searchResult?.news) ? searchResult.news : [];
+    const news = candidateNews
+      .filter((item: any) => {
+        const related = Array.isArray(item.relatedTickers) ? item.relatedTickers.map(String) : [];
+        return related.includes(yahooSymbol) || related.includes(baseSymbol) || String(item.title ?? "").toUpperCase().includes(baseSymbol);
+      })
+      .slice(0, 6)
+      .map((item: any) => ({
+        title: String(item.title ?? ""),
+        publisher: String(item.publisher ?? ""),
+        link: typeof item.link === "string" ? item.link : "",
+        providerPublishTime: Number(item.providerPublishTime ?? 0),
+        type: String(item.type ?? "NEWS"),
+      }))
+      .filter((item: { title: string }) => item.title.length > 0);
+
+    const fundamentals = {
+      trailingPE: summaryValue(summary, "summaryDetail", "trailingPE"),
+      forwardPE: summaryValue(summary, "summaryDetail", "forwardPE") ?? summaryValue(summary, "defaultKeyStatistics", "forwardPE"),
+      priceToBook: summaryValue(summary, "defaultKeyStatistics", "priceToBook"),
+      priceToSales: summaryValue(summary, "summaryDetail", "priceToSalesTrailing12Months"),
+      enterpriseToEbitda: summaryValue(summary, "defaultKeyStatistics", "enterpriseToEbitda"),
+      bookValue: summaryValue(summary, "defaultKeyStatistics", "bookValue"),
+      returnOnEquity: summaryValue(summary, "financialData", "returnOnEquity"),
+      profitMargins: summaryValue(summary, "financialData", "profitMargins") ?? summaryValue(summary, "defaultKeyStatistics", "profitMargins"),
+      revenueGrowth: summaryValue(summary, "financialData", "revenueGrowth"),
+      earningsGrowth: summaryValue(summary, "financialData", "earningsGrowth"),
+      debtToEquity: summaryValue(summary, "financialData", "debtToEquity"),
+      dividendYield: summaryValue(summary, "summaryDetail", "dividendYield"),
+      targetMeanPrice: summaryValue(summary, "financialData", "targetMeanPrice"),
+      recommendationMean: summaryValue(summary, "financialData", "recommendationMean"),
+      analystCount: rawNumber(summary?.financialData?.numberOfAnalystOpinions),
+      asOf: summary?.defaultKeyStatistics?.mostRecentQuarter ?? summary?.defaultKeyStatistics?.lastFiscalYearEnd ?? null,
+    };
+
+    res.json({
+      symbol: baseSymbol,
+      quote,
+      fundamentals,
+      news,
+      source: "Yahoo Finance via BIST Gözcü proxy",
+    });
+  } catch (err) {
+    res.status(502).json({ error: "stock overview upstream error", detail: String(err) });
   }
 });
 
