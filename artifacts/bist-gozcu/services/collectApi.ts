@@ -33,7 +33,8 @@ type QuoteResponse = {
 };
 
 const getApiBase = (): string => {
-  const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "bist-gozcu--careki73.replit.app";
+  const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+  const domain = configuredDomain || "bist-gozcu--careki73.replit.app";
   if (domain) return `https://${domain}/api`;
   // Native APK da artık kalıcı HTTPS proxy kullanır; göreli /api yalnızca web için kullanılır.
   if (Platform.OS !== "web") return "";
