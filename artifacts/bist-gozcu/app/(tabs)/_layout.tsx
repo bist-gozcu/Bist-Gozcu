@@ -21,7 +21,8 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        headerShown: true,
+        // Sekmeler kendi başlıklarını çiziyor; üstte ikinci bir Expo başlığı gösterme.
+        headerShown: false,
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.foreground,
         headerTitleStyle: { fontFamily: "Inter_700Bold", fontSize: 17 },
