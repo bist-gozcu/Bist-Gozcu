@@ -113,7 +113,7 @@ export default function SummaryScreen() {
         <View style={styles.header}>
           <View>
             <Text style={[styles.title, { color: colors.foreground }]}>Piyasa Özeti</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Döviz, altın ve BIST endeksleri</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Döviz, değerli madenler ve BIST endeksleri</Text>
           </View>
           <Pressable onPress={refresh} hitSlop={10} style={[styles.refreshButton, { backgroundColor: colors.secondary }]}>
             <IconRefresh color={colors.mutedForeground} size={16} />
