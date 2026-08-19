@@ -54,10 +54,5 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "extra": {
-      "eas": {
-        "projectId": "bist-gozcu"
-      }
-    }
   }
 }
