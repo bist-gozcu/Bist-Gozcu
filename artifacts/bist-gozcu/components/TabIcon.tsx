@@ -176,6 +176,18 @@ export function IconNotifications({ color, size = 13 }: IconProps) {
   );
 }
 
+export function IconAlarmClock({ color, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="13" r="7" stroke={color} strokeWidth="2" />
+      <Line x1="12" y1="13" x2="12" y2="9" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="12" y1="13" x2="15" y2="15" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="5" y1="4" x2="8" y2="6" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="19" y1="4" x2="16" y2="6" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function IconCheck({ color, size = 14 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

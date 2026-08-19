@@ -38,6 +38,7 @@ import PriceChart from "@/components/PriceChart";
 import {
   IconStar,
   IconNotifications,
+  IconAlarmClock,
   IconArrowUp,
   IconArrowDown,
   IconTrendingUp,
@@ -119,7 +120,7 @@ export default function StockDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const { quotes } = useStocks();
   const { favorites, addFavorite, removeFavorite } = useFavorites();
-  const { isWatched, addToWatchlist } = useWatchlist();
+  const { isWatched, addToWatchlist, removeFromWatchlist } = useWatchlist();
   const { alerts, addAlert, removeAlert } = useAlerts();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -169,6 +170,15 @@ export default function StockDetailScreen() {
   const handleTakibeAl = () => {
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addToWatchlist(symbol ?? "");
+  };
+
+  const handleToggleWatchlist = () => {
+    if (watched) {
+      removeFromWatchlist(symbolText);
+      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      handleTakibeAl();
+    }
   };
 
   const handleRangeChange = (r: ChartRange) => {
@@ -383,16 +393,29 @@ export default function StockDetailScreen() {
           headerTitleStyle: { fontFamily: "Inter_700Bold", fontSize: 17 },
           headerShadowVisible: false,
           headerRight: () => (
-            <Pressable
-              onPress={handleFav}
-              style={({ pressed }) => [styles.headerFavoriteBtn, pressed && { backgroundColor: colors.accent }]}
-              accessibilityRole="button"
-              accessibilityLabel={`${symbol ?? "Hisse"} ${fav ? "favorilerden çıkar" : "favorilere ekle"}`}
-              accessibilityHint="Hisseyi Favoriler ekranına ekler veya çıkarır"
-              testID="stock-detail-favorite"
-            >
-              <IconStar size={21} color={fav ? colors.primary : colors.mutedForeground} filled={fav} />
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={handleOpenAlarmModal}
+                style={({ pressed }) => [styles.headerAlarmBtn, pressed && { backgroundColor: colors.accent }]}
+                accessibilityRole="button"
+                accessibilityLabel={`${symbol ?? "Hisse"} fiyat alarmı kur`}
+                accessibilityHint="Bu hisse için en fazla 6 fiyat alarmı açar"
+                testID="stock-detail-alarm"
+              >
+                <IconAlarmClock size={20} color={activeAlerts.length > 0 ? colors.primary : colors.mutedForeground} />
+                {activeAlerts.length > 0 && <Text style={[styles.headerAlarmCount, { color: colors.primary }]}>{activeAlerts.length}</Text>}
+              </Pressable>
+              <Pressable
+                onPress={handleFav}
+                style={({ pressed }) => [styles.headerFavoriteBtn, pressed && { backgroundColor: colors.accent }]}
+                accessibilityRole="button"
+                accessibilityLabel={`${symbol ?? "Hisse"} ${fav ? "favorilerden çıkar" : "favorilere ekle"}`}
+                accessibilityHint="Hisseyi Favoriler ekranına ekler veya çıkarır"
+                testID="stock-detail-favorite"
+              >
+                <IconStar size={21} color={fav ? colors.primary : colors.mutedForeground} filled={fav} />
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -713,27 +736,18 @@ export default function StockDetailScreen() {
         )}
       </ScrollView>
 
-      {/* ── Bottom action bar ── */}
+      {/* ── Bottom watchlist action ── */}
       <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom + 10 }]}>
-        <View style={styles.bottomActionRow}>
-          <Pressable
-            style={[styles.alarmBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
-            onPress={handleOpenAlarmModal}
-          >
-            <IconNotifications color={colors.primary} size={18} />
-            <Text style={[styles.alarmBtnText, { color: colors.foreground }]}>Fiyat Alarmı</Text>
-            <Text style={[styles.alarmCount, { color: colors.primary }]}>{symbolAlerts.length}/6</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.watchBtn, { backgroundColor: watched ? `${colors.up}18` : colors.secondary, borderColor: watched ? `${colors.up}40` : colors.border }]}
-            onPress={handleTakibeAl}
-            disabled={watched}
-          >
-            <Text style={[styles.watchBtnText, { color: watched ? colors.up : colors.mutedForeground }]}>
-              {watched ? "Piyasa Listesinde ✓" : "Piyasa Listesine Ekle"}
-            </Text>
-          </Pressable>
-        </View>
+        <Pressable
+          style={[styles.watchBtn, { backgroundColor: watched ? `${colors.up}18` : colors.secondary, borderColor: watched ? `${colors.up}40` : colors.border }]}
+          onPress={handleToggleWatchlist}
+          accessibilityRole="button"
+          accessibilityLabel={watched ? "Takipten çıkar" : "Takibe al"}
+        >
+          <Text style={[styles.watchBtnText, { color: watched ? colors.up : colors.mutedForeground }]}>
+            {watched ? "Takipten Çıkar" : "Takibe Al"}
+          </Text>
+        </Pressable>
       </View>
 
       {/* ── Price alert modal ── */}
@@ -985,10 +999,21 @@ const styles = StyleSheet.create({
   alertChipText: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
   alertDeleteBtn: { marginLeft: "auto", padding: 4 },
   root: { flex: 1 },
-  headerFavoriteBtn: {
-    width: 52,
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 2 },
+  headerAlarmBtn: {
+    minWidth: 38,
     height: 44,
-    marginRight: 2,
+    borderRadius: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    paddingHorizontal: 5,
+  },
+  headerAlarmCount: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  headerFavoriteBtn: {
+    width: 44,
+    height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
@@ -998,22 +1023,8 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  bottomActionRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  alarmBtn: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    borderWidth: 1,
-  },
-  alarmBtnText: { fontSize: 13, fontFamily: "Inter_700Bold" },
-  alarmCount: { fontSize: 12, fontFamily: "Inter_700Bold" },
   watchBtn: {
-    flex: 1,
+    width: "100%",
     minHeight: 48,
     borderRadius: 14,
     paddingHorizontal: 10,
