@@ -13,6 +13,13 @@
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.bistgozcu.app"
@@ -42,6 +49,7 @@
       ],
       "expo-font",
       "expo-web-browser",
+      "expo-updates",
       [
         "expo-notifications",
         {
@@ -53,6 +61,6 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    },
+    }
   }
 }
