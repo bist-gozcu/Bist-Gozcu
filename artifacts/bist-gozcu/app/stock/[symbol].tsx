@@ -39,6 +39,7 @@ import {
   IconStar,
   IconNotifications,
   IconAlarmClock,
+  IconCheckMark,
   IconArrowUp,
   IconArrowDown,
   IconTrendingUp,
@@ -120,7 +121,7 @@ export default function StockDetailScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const { quotes } = useStocks();
   const { favorites, addFavorite, removeFavorite } = useFavorites();
-  const { isWatched, addToWatchlist, removeFromWatchlist } = useWatchlist();
+  const { watchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
   const { alerts, addAlert, removeAlert } = useAlerts();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -134,9 +135,11 @@ export default function StockDetailScreen() {
   const [alarmNote, setAlarmNote] = useState("");
   const [infoKey, setInfoKey] = useState<string | null>(null);
 
+  const symbolText = symbol?.toUpperCase().trim() ?? "";
   const quote = quotes[symbol ?? ""] ?? stockOverview?.quote;
   const meta = getStockMeta(symbol ?? "");
-  const fav = favorites.includes((symbol ?? "").trim().toUpperCase());
+  const fav = favorites.includes(symbolText);
+  const watched = watchlist.includes(symbolText);
   const session = getMarketSession();
 
   useEffect(() => {
@@ -165,19 +168,13 @@ export default function StockDetailScreen() {
     else addFavorite(symbol ?? "");
   };
 
-  const watched = isWatched(symbol ?? "");
-
-  const handleTakibeAl = () => {
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addToWatchlist(symbol ?? "");
-  };
-
   const handleToggleWatchlist = () => {
     if (watched) {
       removeFromWatchlist(symbolText);
       if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } else {
-      handleTakibeAl();
+      addToWatchlist(symbolText);
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   };
 
@@ -186,7 +183,6 @@ export default function StockDetailScreen() {
     setRange(r);
   };
 
-  const symbolText = symbol?.toUpperCase().trim() ?? "";
   const symbolAlerts = alerts.filter((a) => a.symbol === symbolText);
 
   const handleOpenAlarmModal = () => {
@@ -406,6 +402,20 @@ export default function StockDetailScreen() {
                 {activeAlerts.length > 0 && <Text style={[styles.headerAlarmCount, { color: colors.primary }]}>{activeAlerts.length}</Text>}
               </Pressable>
               <Pressable
+                onPress={handleToggleWatchlist}
+                style={({ pressed }) => [
+                  styles.headerWatchBtn,
+                  { backgroundColor: watched ? `${colors.up}20` : "transparent" },
+                  pressed && { backgroundColor: watched ? `${colors.up}35` : colors.accent },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={watched ? "Takipten çıkar" : "Takibe al"}
+                accessibilityHint="Hisseyi takip listesine ekler veya çıkarır"
+                testID="stock-detail-watchlist"
+              >
+                <IconCheckMark size={18} color={watched ? colors.up : colors.mutedForeground} />
+              </Pressable>
+              <Pressable
                 onPress={handleFav}
                 style={({ pressed }) => [styles.headerFavoriteBtn, pressed && { backgroundColor: colors.accent }]}
                 accessibilityRole="button"
@@ -421,7 +431,7 @@ export default function StockDetailScreen() {
       />
       <ScrollView
         style={styles.container}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 28 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Price Hero */}
@@ -736,19 +746,7 @@ export default function StockDetailScreen() {
         )}
       </ScrollView>
 
-      {/* ── Bottom watchlist action ── */}
-      <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom + 10 }]}>
-        <Pressable
-          style={[styles.watchBtn, { backgroundColor: watched ? `${colors.up}18` : colors.secondary, borderColor: watched ? `${colors.up}40` : colors.border }]}
-          onPress={handleToggleWatchlist}
-          accessibilityRole="button"
-          accessibilityLabel={watched ? "Takipten çıkar" : "Takibe al"}
-        >
-          <Text style={[styles.watchBtnText, { color: watched ? colors.up : colors.mutedForeground }]}>
-            {watched ? "Takipten Çıkar" : "Takibe Al"}
-          </Text>
-        </Pressable>
-      </View>
+
 
       {/* ── Price alert modal ── */}
       <Modal
@@ -1011,6 +1009,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
   headerAlarmCount: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  headerWatchBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 1,
+  },
   headerFavoriteBtn: {
     width: 44,
     height: 44,
@@ -1018,22 +1024,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  bottomBar: {
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  watchBtn: {
-    width: "100%",
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  watchBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",

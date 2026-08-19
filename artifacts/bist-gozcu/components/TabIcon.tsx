@@ -197,6 +197,14 @@ export function IconCheck({ color, size = 14 }: IconProps) {
   );
 }
 
+export function IconCheckMark({ color, size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polyline points="5 12 10 17 19 7" stroke={color} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 export function IconClose({ color, size = 14 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
