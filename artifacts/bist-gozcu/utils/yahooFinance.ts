@@ -198,47 +198,72 @@ async function fetchQuotesFromChart(symbols: string[]): Promise<QuoteData[]> {
   return results;
 }
 
+const PROXY_CHUNK_SIZE = 24;
+const PROXY_TIMEOUT_MS = 20_000;
+const PROXY_RETRIES = 2;
+
+function normalizeProxyResults(payload: unknown): QuoteData[] {
+  const root = payload as { quoteResponse?: { result?: Array<Record<string, unknown>> } };
+  const rawResults = Array.isArray(root?.quoteResponse?.result)
+    ? root.quoteResponse.result
+    : [];
+
+  return rawResults
+    .map((q) => {
+      const rawSymbol = typeof q.symbol === "string" ? q.symbol : "";
+      const symbol = rawSymbol.replace(/\.IS$/i, "").toUpperCase();
+      return {
+        ...q,
+        symbol,
+        regularMarketPrice: Number(q.regularMarketPrice) || 0,
+        regularMarketChangePercent: Number(q.regularMarketChangePercent) || 0,
+        regularMarketChange: Number(q.regularMarketChange) || 0,
+        regularMarketVolume: Number(q.regularMarketVolume) || 0,
+        regularMarketPreviousClose: Number(q.regularMarketPreviousClose) || 0,
+        regularMarketOpen: Number(q.regularMarketOpen) || 0,
+        regularMarketDayHigh: Number(q.regularMarketDayHigh) || 0,
+        regularMarketDayLow: Number(q.regularMarketDayLow) || 0,
+        fiftyTwoWeekHigh: Number(q.fiftyTwoWeekHigh) || 0,
+        fiftyTwoWeekLow: Number(q.fiftyTwoWeekLow) || 0,
+        marketCap: Number(q.marketCap) || 0,
+        averageDailyVolume3Month: Number(q.averageDailyVolume3Month) || 0,
+      } as QuoteData;
+    })
+    .filter((q) => q.symbol.length > 0 && q.regularMarketPrice > 0);
+}
+
+async function fetchProxyChunk(proxyBase: string, symbols: string[]): Promise<QuoteData[]> {
+  const url = `${proxyBase}/bist/quotes?symbols=${symbols.join(",")}`;
+  for (let attempt = 0; attempt < PROXY_RETRIES; attempt += 1) {
+    try {
+      const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
+      if (!res.ok) continue;
+      const results = normalizeProxyResults(await res.json());
+      if (results.length > 0) return results;
+    } catch {
+      // Replit free deployment may need one retry after waking from sleep.
+    }
+  }
+  return [];
+}
+
 export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> {
   const proxyBase = getProxyBase();
 
   if (proxyBase) {
-    try {
-      const url = `${proxyBase}/bist/quotes?symbols=${symbols.join(",")}`;
-      const res = await fetchWithTimeout(url);
-      if (res.ok) {
-        const json = await res.json() as Record<string, { result?: Array<Record<string, unknown>> }>;
-        const rawResults = Array.isArray(json?.quoteResponse?.result)
-          ? json.quoteResponse.result
-          : [];
-        const results = rawResults
-          .map((q) => {
-            const rawSymbol = typeof q.symbol === "string" ? q.symbol : "";
-            const symbol = rawSymbol.replace(/\.IS$/i, "").toUpperCase();
-            return {
-              ...q,
-              symbol,
-              regularMarketPrice: Number(q.regularMarketPrice) || 0,
-              regularMarketChangePercent: Number(q.regularMarketChangePercent) || 0,
-              regularMarketChange: Number(q.regularMarketChange) || 0,
-              regularMarketVolume: Number(q.regularMarketVolume) || 0,
-              regularMarketPreviousClose: Number(q.regularMarketPreviousClose) || 0,
-              regularMarketOpen: Number(q.regularMarketOpen) || 0,
-              regularMarketDayHigh: Number(q.regularMarketDayHigh) || 0,
-              regularMarketDayLow: Number(q.regularMarketDayLow) || 0,
-              fiftyTwoWeekHigh: Number(q.fiftyTwoWeekHigh) || 0,
-              fiftyTwoWeekLow: Number(q.fiftyTwoWeekLow) || 0,
-              marketCap: Number(q.marketCap) || 0,
-              averageDailyVolume3Month: Number(q.averageDailyVolume3Month) || 0,
-            } as QuoteData;
-          })
-          .filter((q) => q.symbol.length > 0 && q.regularMarketPrice > 0);
-        if (results.length > 0) return results;
-      }
-    } catch {}
+    const proxyResults: QuoteData[] = [];
+    for (let i = 0; i < symbols.length; i += PROXY_CHUNK_SIZE) {
+      const chunkResults = await fetchProxyChunk(
+        proxyBase,
+        symbols.slice(i, i + PROXY_CHUNK_SIZE),
+      );
+      proxyResults.push(...chunkResults);
+    }
+    if (proxyResults.length > 0) return proxyResults;
   }
 
   // Yahoo’nun v7 quote endpoint’i bazı ağlarda 401 döndürüyor. Chart endpoint’i
-  // mobil cihazlarda çalıştığı için fiyat fallback’i olarak kullanılır.
+  // mobil cihazlarda çalıştığı için son güvenli fallback olarak kullanılır.
   return fetchQuotesFromChart(symbols);
 }
 
