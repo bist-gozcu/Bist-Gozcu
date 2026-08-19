@@ -47,6 +47,23 @@ const RANGE_INTERVAL: Record<ChartRange, string> = {
   "5y": "1wk",
 };
 
+const QUOTE_TIMEOUT_MS = 8_000;
+const QUOTE_BATCH_DEADLINE_MS = 30_000;
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = QUOTE_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function getProxyBase(): string {
   const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
   if (domain) return `https://${domain}/api`;
@@ -60,7 +77,7 @@ let crumbFetchTime = 0;
 async function getCrumb(): Promise<string | null> {
   if (cachedCrumb && Date.now() - crumbFetchTime < 3600000) return cachedCrumb;
   try {
-    const res = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+    const res = await fetchWithTimeout("https://query1.finance.yahoo.com/v1/test/getcrumb", {
       headers: YF_HEADERS,
     });
     if (res.ok) {
@@ -96,11 +113,11 @@ type YahooChartQuote = {
 const asNumber = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
-async function fetchQuoteFromChart(symbol: string): Promise<QuoteData | null> {
+async function fetchQuoteFromChart(symbol: string, timeoutMs = QUOTE_TIMEOUT_MS): Promise<QuoteData | null> {
   try {
     const yahooSymbol = `${symbol.replace(".IS", "").toUpperCase()}.IS`;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=3mo&includePrePost=false`;
-    const res = await fetch(url, { headers: YF_HEADERS });
+    const res = await fetchWithTimeout(url, { headers: YF_HEADERS }, timeoutMs);
     if (!res.ok) return null;
 
     const json = await res.json() as YahooChartQuote;
@@ -152,9 +169,15 @@ async function fetchQuoteFromChart(symbol: string): Promise<QuoteData | null> {
 
 async function fetchQuotesFromChart(symbols: string[]): Promise<QuoteData[]> {
   const results: QuoteData[] = [];
-  const concurrency = 8;
-  for (let i = 0; i < symbols.length; i += concurrency) {
-    const batch = await Promise.all(symbols.slice(i, i + concurrency).map(fetchQuoteFromChart));
+  const concurrency = 4;
+  const deadline = Date.now() + QUOTE_BATCH_DEADLINE_MS;
+  for (let i = 0; i < symbols.length && Date.now() < deadline; i += concurrency) {
+    const remaining = deadline - Date.now();
+    const batch = await Promise.all(
+      symbols.slice(i, i + concurrency).map((symbol) =>
+        fetchQuoteFromChart(symbol, Math.min(QUOTE_TIMEOUT_MS, remaining)),
+      ),
+    );
     results.push(...batch.filter((quote): quote is QuoteData => quote !== null));
   }
   return results;
@@ -166,7 +189,7 @@ export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> 
   if (proxyBase) {
     try {
       const url = `${proxyBase}/bist/quotes?symbols=${symbols.join(",")}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (res.ok) {
         const json = await res.json() as Record<string, Record<string, QuoteData[]>>;
         const results = json?.quoteResponse?.result ?? [];
@@ -261,7 +284,7 @@ export async function fetchChartData(
 
   try {
     const v8url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}.IS?interval=${yahooInterval}&range=${range}&includePrePost=false`;
-    const res = await fetch(v8url, { headers: YF_HEADERS });
+    const res = await fetchWithTimeout(v8url, { headers: YF_HEADERS });
     if (res.ok) {
       const json = await res.json();
       const result = parseChartJson(json, symbol);
@@ -273,7 +296,7 @@ export async function fetchChartData(
     const crumb = await getCrumb();
     const crumbParam = crumb ? `&crumb=${encodeURIComponent(crumb)}` : "";
     const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}.IS?interval=${yahooInterval}&range=${range}${crumbParam}`;
-    const res = await fetch(url, { headers: YF_HEADERS });
+    const res = await fetchWithTimeout(url, { headers: YF_HEADERS });
     const json = await res.json();
     return finish(parseChartJson(json, symbol));
   } catch {
