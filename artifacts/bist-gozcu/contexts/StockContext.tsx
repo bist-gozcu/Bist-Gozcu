@@ -52,13 +52,10 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     setIsMarketOpen(isBistOpen());
     try {
       const symbols = ALL_BIST_STOCKS.map((s) => s.symbol);
-      const CHUNK_SIZE = 25;
-      const chunks: string[][] = [];
-      for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
-        chunks.push(symbols.slice(i, i + CHUNK_SIZE));
-      }
-      const chunkResults = await Promise.all(chunks.map((c) => fetchBatchQuotes(c)));
-      const results = chunkResults.flat();
+      // fetchBatchQuotes chart fallback’ini kontrollü eşzamanlılıkla çalıştırır.
+      // Burada ayrıca chunk’lamak Android’de 32 eşzamanlı Yahoo isteği üretip
+      // tüm fiyatların boş kalmasına neden olabiliyordu.
+      const results = await fetchBatchQuotes(symbols);
       const map: Record<string, StockQuote> = {};
       for (const q of results) {
         map[q.symbol] = q as StockQuote;
