@@ -59,7 +59,7 @@ export default function TabLayout() {
         name="summary"
         options={{
           title: "Piyasa Özeti",
-          tabBarLabel: "Özet",
+          tabBarLabel: "Piyasa",
           tabBarIcon: ({ color }) => <IconTrendingUp color={color} size={22} />,
         }}
       />
