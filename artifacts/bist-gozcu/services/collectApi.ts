@@ -33,9 +33,9 @@ type QuoteResponse = {
 };
 
 const getApiBase = (): string => {
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "bist-gozcu--careki73.replit.app";
   if (domain) return `https://${domain}/api`;
-  // Native APK’da göreli URL geçersizdir; doğrudan Yahoo chart fallback’i kullanılır.
+  // Native APK da artık kalıcı HTTPS proxy kullanır; göreli /api yalnızca web için kullanılır.
   if (Platform.OS !== "web") return "";
   return "/api";
 };

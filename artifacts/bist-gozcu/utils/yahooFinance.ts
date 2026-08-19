@@ -75,7 +75,7 @@ async function fetchWithTimeout(
 }
 
 function getProxyBase(): string {
-  const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
+  const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "bist-gozcu--careki73.replit.app";
   if (domain) return `https://${domain}/api`;
   if (Platform.OS === "web") return "/api";
   return "";
