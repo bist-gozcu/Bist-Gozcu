@@ -55,12 +55,22 @@ async function fetchWithTimeout(
   init: RequestInit = {},
   timeoutMs = QUOTE_TIMEOUT_MS,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const requestInit: RequestInit = controller
+    ? { ...init, signal: controller.signal }
+    : init;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller?.abort();
+      reject(new Error(`İstek zaman aşımına uğradı: ${url}`));
+    }, timeoutMs);
+  });
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    // Promise.race, Android fetch abort’u gecikse bile üst katmanın beklemesini engeller.
+    return await Promise.race([fetch(url, requestInit), timeout]);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -117,7 +127,8 @@ async function fetchQuoteFromChart(symbol: string, timeoutMs = QUOTE_TIMEOUT_MS)
   try {
     const yahooSymbol = `${symbol.replace(".IS", "").toUpperCase()}.IS`;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=3mo&includePrePost=false`;
-    const res = await fetchWithTimeout(url, { headers: YF_HEADERS }, timeoutMs);
+    // Android OkHttp bazı sürümlerde tarayıcı User-Agent başlığını reddedebiliyor.
+    const res = await fetchWithTimeout(url, undefined, timeoutMs);
     if (!res.ok) return null;
 
     const json = await res.json() as YahooChartQuote;
