@@ -82,7 +82,8 @@ export default function MarketScreen() {
   const upCount = watchlist.filter((s) => (quotes[s]?.regularMarketChangePercent ?? 0) > 0).length;
   const downCount = watchlist.filter((s) => (quotes[s]?.regularMarketChangePercent ?? 0) < 0).length;
 
-  const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
+  // Android/iOS status bar alanını başlıkla çakışmayacak şekilde koru.
+  const topPaddingStyle = { paddingTop: insets.top + 10 };
 
   const handleMove = useCallback((symbol: string, direction: -1 | 1) => {
     const from = watchlist.indexOf(symbol);
