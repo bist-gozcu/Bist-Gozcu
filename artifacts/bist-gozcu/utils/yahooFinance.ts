@@ -74,12 +74,15 @@ async function fetchWithTimeout(
   }
 }
 
+const PERMANENT_PROXY_BASE = "https://bist-gozcu--careki73.replit.app/api";
+
 function getProxyBase(): string {
   const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-  const domain = configuredDomain || "bist-gozcu--careki73.replit.app";
-  if (domain) return `https://${domain}/api`;
-  if (Platform.OS === "web") return "/api";
-  return "";
+  // Android’da EAS ortam değişkeni boş veya eski olsa bile kalıcı proxy kesin kullanılır.
+  if (!configuredDomain || configuredDomain === "bist-gozcu--careki73.replit.app") {
+    return PERMANENT_PROXY_BASE;
+  }
+  return `https://${configuredDomain}/api`;
 }
 
 let cachedCrumb: string | null = null;
@@ -203,11 +206,33 @@ export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> 
       const url = `${proxyBase}/bist/quotes?symbols=${symbols.join(",")}`;
       const res = await fetchWithTimeout(url);
       if (res.ok) {
-        const json = await res.json() as Record<string, Record<string, QuoteData[]>>;
-        const results = json?.quoteResponse?.result ?? [];
-        if (results.length > 0) {
-          return results.map((q) => ({ ...q, symbol: q.symbol.replace(".IS", "") }));
-        }
+        const json = await res.json() as Record<string, { result?: Array<Record<string, unknown>> }>;
+        const rawResults = Array.isArray(json?.quoteResponse?.result)
+          ? json.quoteResponse.result
+          : [];
+        const results = rawResults
+          .map((q) => {
+            const rawSymbol = typeof q.symbol === "string" ? q.symbol : "";
+            const symbol = rawSymbol.replace(/\.IS$/i, "").toUpperCase();
+            return {
+              ...q,
+              symbol,
+              regularMarketPrice: Number(q.regularMarketPrice) || 0,
+              regularMarketChangePercent: Number(q.regularMarketChangePercent) || 0,
+              regularMarketChange: Number(q.regularMarketChange) || 0,
+              regularMarketVolume: Number(q.regularMarketVolume) || 0,
+              regularMarketPreviousClose: Number(q.regularMarketPreviousClose) || 0,
+              regularMarketOpen: Number(q.regularMarketOpen) || 0,
+              regularMarketDayHigh: Number(q.regularMarketDayHigh) || 0,
+              regularMarketDayLow: Number(q.regularMarketDayLow) || 0,
+              fiftyTwoWeekHigh: Number(q.fiftyTwoWeekHigh) || 0,
+              fiftyTwoWeekLow: Number(q.fiftyTwoWeekLow) || 0,
+              marketCap: Number(q.marketCap) || 0,
+              averageDailyVolume3Month: Number(q.averageDailyVolume3Month) || 0,
+            } as QuoteData;
+          })
+          .filter((q) => q.symbol.length > 0 && q.regularMarketPrice > 0);
+        if (results.length > 0) return results;
       }
     } catch {}
   }
