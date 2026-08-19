@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,8 +19,7 @@ import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useWatchlist } from "@/contexts/WatchlistContext";
-import { useAlerts } from "@/contexts/AlertContext";
-import { usePortfolio } from "@/contexts/PortfolioContext";
+import { AlertType, useAlerts } from "@/contexts/AlertContext";
 import { fetchChartData, ChartResult, ChartRange, getMarketSession } from "@/utils/yahooFinance";
 import {
   analyzeStock,
@@ -34,11 +33,15 @@ import {
   tilsonT3,
 } from "@/utils/indicators";
 import { getStockMeta } from "@/constants/bistStocks";
-import SignalBadge from "@/components/SignalBadge";
 import PriceChart from "@/components/PriceChart";
 import {
   IconStar,
   IconNotifications,
+  IconArrowUp,
+  IconArrowDown,
+  IconTrendingUp,
+  IconTrendingDown,
+  IconTrash,
   IconX,
 } from "@/components/TabIcon";
 
@@ -114,24 +117,22 @@ export default function StockDetailScreen() {
   const insets = useSafeAreaInsets();
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const { quotes } = useStocks();
-  const { isFavorite, addFavorite, removeFavorite } = useFavorites();
+  const { favorites, addFavorite, removeFavorite } = useFavorites();
   const { isWatched, addToWatchlist } = useWatchlist();
-  const { alerts } = useAlerts();
-  const { addEntry, getEntry, updateEntry } = usePortfolio();
+  const { alerts, addAlert, removeAlert } = useAlerts();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loadingChart, setLoadingChart] = useState(true);
   const [range, setRange] = useState<ChartRange>("1d");
-  const [showPortfolioModal, setShowPortfolioModal] = useState(false);
-  const [qty, setQty] = useState("");
-  const [avgCostStr, setAvgCostStr] = useState("");
-  const [note, setNote] = useState("");
+  const [showAlarmModal, setShowAlarmModal] = useState(false);
+  const [alarmTarget, setAlarmTarget] = useState("");
+  const [alarmType, setAlarmType] = useState<AlertType>("above");
+  const [alarmNote, setAlarmNote] = useState("");
   const [infoKey, setInfoKey] = useState<string | null>(null);
-  const qtyRef = useRef<TextInput>(null);
 
   const quote = quotes[symbol ?? ""];
   const meta = getStockMeta(symbol ?? "");
-  const fav = isFavorite(symbol ?? "");
+  const fav = favorites.includes((symbol ?? "").trim().toUpperCase());
   const session = getMarketSession();
 
   useEffect(() => {
@@ -140,8 +141,7 @@ export default function StockDetailScreen() {
     fetchChartData(symbol, range).then((data) => {
       setChart(data);
       if (data && data.closes.length >= 14) {
-        const result = analyzeStock(data.closes, data.highs, data.lows, data.volumes);
-        setAnalysis(result);
+        setAnalysis(analyzeStock(data.closes, data.highs, data.lows, data.volumes));
       } else {
         setAnalysis(null);
       }
@@ -167,32 +167,43 @@ export default function StockDetailScreen() {
     setRange(r);
   };
 
-  const existingEntry = getEntry(symbol ?? "");
+  const symbolText = symbol?.toUpperCase().trim() ?? "";
+  const symbolAlerts = alerts.filter((a) => a.symbol === symbolText);
 
-  const handleOpenPortfolioModal = () => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const prefill = existingEntry
-      ? { q: existingEntry.quantity.toString(), avg: existingEntry.avgPrice.toString(), n: existingEntry.note }
-      : { q: "", avg: price != null ? price.toFixed(2) : "", n: "" };
-    setQty(prefill.q);
-    setAvgCostStr(prefill.avg);
-    setNote(prefill.n);
-    setShowPortfolioModal(true);
-    setTimeout(() => qtyRef.current?.focus(), 300);
-  };
-
-  const handleSavePortfolio = () => {
-    const sym = symbol?.toUpperCase().trim() ?? "";
-    const q = parseFloat(qty);
-    const a = parseFloat(avgCostStr);
-    if (!sym || isNaN(q) || q <= 0 || isNaN(a) || a <= 0) {
-      Alert.alert("Hata", "Geçerli bir adet ve ortalama maliyet girin.");
+  const handleOpenAlarmModal = () => {
+    if (symbolAlerts.length >= 6) {
+      Alert.alert("Alarm sınırı", "Bir hisse için en fazla 6 fiyat alarmı kurabilirsiniz.");
       return;
     }
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setAlarmTarget("");
+    setAlarmNote("");
+    setAlarmType("above");
+    setShowAlarmModal(true);
+  };
+
+  const handleSaveAlarm = () => {
+    const target = Number.parseFloat(alarmTarget.replace(",", "."));
+    if (!symbolText || !Number.isFinite(target) || target <= 0) {
+      Alert.alert("Hata", "Geçerli bir hedef fiyat girin.");
+      return;
+    }
+    if (symbolAlerts.length >= 6) {
+      Alert.alert("Alarm sınırı", "Bir hisse için en fazla 6 fiyat alarmı kurabilirsiniz.");
+      return;
+    }
+    addAlert(symbolText, target, alarmType, alarmNote.trim());
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (existingEntry) updateEntry(existingEntry.id, q, a, note);
-    else addEntry(sym, q, a, note);
-    setShowPortfolioModal(false);
+    setShowAlarmModal(false);
+    setAlarmTarget("");
+    setAlarmNote("");
+  };
+
+  const handleRemoveAlarm = (id: string) => {
+    Alert.alert("Alarmı sil", "Bu fiyat alarmı silinsin mi?", [
+      { text: "İptal", style: "cancel" },
+      { text: "Sil", style: "destructive", onPress: () => removeAlert(id) },
+    ]);
   };
 
   const price = quote?.regularMarketPrice;
@@ -319,7 +330,7 @@ export default function StockDetailScreen() {
     return lines.filter(Boolean).join("\n");
   })();
 
-  const activeAlerts = alerts.filter((a) => a.symbol === symbol && !a.triggered);
+  const activeAlerts = symbolAlerts.filter((a) => !a.triggered);
 
   const sessionLabel =
     session === "open" ? "Açık" :
@@ -380,7 +391,6 @@ export default function StockDetailScreen() {
             </View>
           </View>
           <View style={styles.priceRight}>
-            {analysis && <SignalBadge signal={analysis.signal} size="md" strength={analysis.strength} />}
             <View style={styles.sessionRow}>
               <View style={[styles.sessionDot, {
                 backgroundColor: session === "open" ? colors.up : colors.mutedForeground
@@ -621,10 +631,13 @@ export default function StockDetailScreen() {
               <View key={a.id} style={[styles.alertChip, { backgroundColor: `${colors.neutral}15`, borderColor: `${colors.neutral}30` }]}>
                 <IconNotifications color={colors.neutral} size={13} />
                 <Text style={[styles.alertChipText, { color: colors.mutedForeground }]}>
-                  {a.alertType === "tp" ? "Kar Al" :
-                   a.alertType === "sl" ? "Zarar Kes" :
-                   a.alertType === "above" ? "Üstünde" : "Altında"}: ₺{a.targetPrice.toFixed(2)}
+                  {a.alertType === "tp" ? "Kâr al" :
+                   a.alertType === "sl" ? "Zarar kes" :
+                   a.alertType === "above" ? "Üstüne çıkınca" : "Altına düşünce"}: ₺{a.targetPrice.toFixed(2)}
                 </Text>
+                <Pressable onPress={() => handleRemoveAlarm(a.id)} hitSlop={10} style={styles.alertDeleteBtn}>
+                  <IconTrash color={colors.mutedForeground} size={14} />
+                </Pressable>
               </View>
             ))}
           </View>
@@ -633,130 +646,97 @@ export default function StockDetailScreen() {
 
       {/* ── Bottom action bar ── */}
       <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom + 10 }]}>
-        {existingEntry && (
-          <View style={[styles.portfolioChip, { backgroundColor: `${colors.up}18`, borderColor: `${colors.up}40` }]}>
-            <Text style={[styles.portfolioChipText, { color: colors.up }]}>
-              Portföyde: {existingEntry.quantity} adet · ₺{existingEntry.avgPrice.toFixed(2)} ort.
+        <View style={styles.bottomActionRow}>
+          <Pressable
+            style={[styles.alarmBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+            onPress={handleOpenAlarmModal}
+          >
+            <IconNotifications color={colors.primary} size={18} />
+            <Text style={[styles.alarmBtnText, { color: colors.foreground }]}>Fiyat Alarmı</Text>
+            <Text style={[styles.alarmCount, { color: colors.primary }]}>{symbolAlerts.length}/6</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.watchBtn, { backgroundColor: watched ? `${colors.up}18` : colors.secondary, borderColor: watched ? `${colors.up}40` : colors.border }]}
+            onPress={handleTakibeAl}
+            disabled={watched}
+          >
+            <Text style={[styles.watchBtnText, { color: watched ? colors.up : colors.mutedForeground }]}>
+              {watched ? "Piyasa Listesinde ✓" : "Piyasa Listesine Ekle"}
             </Text>
-          </View>
-        )}
-        <Pressable
-          style={[styles.addBtn, { backgroundColor: existingEntry ? colors.secondary : colors.primary }]}
-          onPress={handleOpenPortfolioModal}
-        >
-          <Text style={[styles.addBtnText, { color: existingEntry ? colors.foreground : "#fff" }]}>
-            {existingEntry ? "Pozisyonu Güncelle" : "Portföye Ekle"}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.watchBtn, { backgroundColor: watched ? `${colors.up}18` : colors.secondary, borderColor: watched ? `${colors.up}40` : colors.border }]}
-          onPress={handleTakibeAl}
-          disabled={watched}
-        >
-          <Text style={[styles.watchBtnText, { color: watched ? colors.up : colors.mutedForeground }]}>
-            {watched ? "Piyasa Listesinde ✓" : "Piyasa Listesine Ekle"}
-          </Text>
-        </Pressable>
+          </Pressable>
+        </View>
       </View>
 
-      {/* ── Portfolio Modal ── */}
+      {/* ── Price alert modal ── */}
       <Modal
-        visible={showPortfolioModal}
+        visible={showAlarmModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowPortfolioModal(false)}
+        onRequestClose={() => setShowAlarmModal(false)}
       >
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
             <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
               <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
-
-              {/* Modal header */}
               <View style={styles.modalHeader}>
                 <View>
-                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                    {existingEntry ? "Pozisyonu Güncelle" : "Portföye Ekle"}
-                  </Text>
-                  <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>{symbol}</Text>
+                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Fiyat Alarmı</Text>
+                  <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>{symbolText} · {symbolAlerts.length}/6 alarm</Text>
                 </View>
-                <Pressable onPress={() => setShowPortfolioModal(false)} hitSlop={12}
-                  style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
+                <Pressable onPress={() => setShowAlarmModal(false)} hitSlop={12} style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
                   <IconX color={colors.mutedForeground} size={15} />
                 </Pressable>
               </View>
 
-              {/* Current price pill */}
-              {price != null && (
-                <View style={[styles.priceInfoPill, { backgroundColor: colors.secondary }]}>
-                  <Text style={[styles.priceInfoText, { color: colors.mutedForeground }]}>Anlık fiyat: </Text>
-                  <Text style={[styles.priceInfoVal, { color: changeColor }]}>₺{price.toFixed(2)}</Text>
-                  {change != null && (
-                    <Text style={[styles.priceInfoChange, { color: changeColor }]}>
-                      {" "}({change >= 0 ? "+" : ""}{change.toFixed(2)}%)
-                    </Text>
-                  )}
-                </View>
-              )}
-
-              {/* Adet */}
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Adet</Text>
-                <TextInput
-                  ref={qtyRef}
-                  style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
-                  value={qty}
-                  onChangeText={setQty}
-                  keyboardType="numeric"
-                  placeholder="Kaç lot?"
-                  placeholderTextColor={colors.mutedForeground}
-                  returnKeyType="next"
-                />
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Alarm türü</Text>
+                <View style={styles.alarmTypeRow}>
+                  {([
+                    ["above", "Üstüne çıkınca", IconArrowUp, colors.up],
+                    ["below", "Altına düşünce", IconArrowDown, colors.down],
+                    ["tp", "Kâr al", IconTrendingUp, colors.up],
+                    ["sl", "Zarar kes", IconTrendingDown, colors.down],
+                  ] as const).map(([type, label, Icon, typeColor]) => {
+                    const active = alarmType === type;
+                    return (
+                      <Pressable
+                        key={type}
+                        style={[styles.alarmTypeBtn, { backgroundColor: active ? `${typeColor}20` : colors.input, borderColor: active ? typeColor : colors.border }]}
+                        onPress={() => setAlarmType(type)}
+                      >
+                        <Icon color={active ? typeColor : colors.mutedForeground} size={14} />
+                        <Text style={[styles.alarmTypeText, { color: active ? typeColor : colors.mutedForeground }]}>{label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
 
-              {/* Ortalama maliyet */}
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Ortalama Maliyet (₺)</Text>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Hedef fiyat (₺)</Text>
                 <TextInput
                   style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
-                  value={avgCostStr}
-                  onChangeText={setAvgCostStr}
+                  value={alarmTarget}
+                  onChangeText={setAlarmTarget}
                   keyboardType="decimal-pad"
-                  placeholder={price != null ? `${price.toFixed(2)}` : "0.00"}
+                  placeholder={price != null ? price.toFixed(2) : "150.00"}
                   placeholderTextColor={colors.mutedForeground}
-                  returnKeyType="done"
                 />
               </View>
 
-              {/* Toplam maliyet önizleme */}
-              {qty !== "" && avgCostStr !== "" && !isNaN(parseFloat(qty)) && !isNaN(parseFloat(avgCostStr)) && (
-                <View style={[styles.totalRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                  <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>Toplam Maliyet</Text>
-                  <Text style={[styles.totalVal, { color: colors.foreground }]}>
-                    ₺{(parseFloat(qty) * parseFloat(avgCostStr)).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
-                  </Text>
-                </View>
-              )}
-
-              {/* Not */}
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Not (isteğe bağlı)</Text>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Not (opsiyonel)</Text>
                 <TextInput
                   style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="Alış gerekçesi..."
+                  value={alarmNote}
+                  onChangeText={setAlarmNote}
+                  placeholder="Örn. direnç seviyesi"
                   placeholderTextColor={colors.mutedForeground}
-                  returnKeyType="done"
                 />
               </View>
 
-              <Pressable
-                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
-                onPress={handleSavePortfolio}
-              >
-                <Text style={styles.saveBtnText}>
-                  {existingEntry ? "Güncelle" : "Portföye Ekle"}
-                </Text>
+              <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSaveAlarm}>
+                <Text style={styles.saveBtnText}>Alarmı Kur</Text>
               </Pressable>
             </View>
           </KeyboardAvoidingView>
@@ -912,7 +892,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
-  alertChipText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  alertChipText: { flex: 1, fontSize: 12, fontFamily: "Inter_500Medium" },
+  alertDeleteBtn: { marginLeft: "auto", padding: 4 },
   root: { flex: 1 },
   headerFavoriteBtn: {
     width: 52,
@@ -926,27 +907,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 8,
   },
-  portfolioChip: {
-    borderRadius: 10,
+  bottomActionRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  alarmBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
     borderWidth: 1,
-    alignItems: "center",
   },
-  portfolioChipText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  addBtn: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  addBtnText: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  alarmBtnText: { fontSize: 13, fontFamily: "Inter_700Bold" },
+  alarmCount: { fontSize: 12, fontFamily: "Inter_700Bold" },
   watchBtn: {
+    flex: 1,
+    minHeight: 48,
     borderRadius: 14,
-    paddingVertical: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     alignItems: "center",
-    marginTop: 8,
+    justifyContent: "center",
     borderWidth: 1,
   },
   watchBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
@@ -988,6 +971,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Inter_400Regular",
   },
+  alarmTypeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  alarmTypeBtn: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 9, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
+  alarmTypeText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",

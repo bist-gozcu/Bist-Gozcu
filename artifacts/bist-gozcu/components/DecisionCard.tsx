@@ -1,11 +1,13 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 
 interface DecisionCardProps {
   sembol: string;
   skor: number;
   guncelFiyat: number;
+  gunlukDegisim?: number;
+  onPress?: () => void;
   hedefFiyat?: number;
   stopFiyat?: number;
   etiket?: string;
@@ -46,6 +48,8 @@ export default function DecisionCard({
   sembol,
   skor,
   guncelFiyat,
+  gunlukDegisim,
+  onPress,
   hedefFiyat,
   stopFiyat,
   etiket = "TAKİP LİSTESİ",
@@ -87,12 +91,26 @@ export default function DecisionCard({
   const rsiLabel = Number.isFinite(rsiValue) ? `RSI ${rsiValue?.toFixed(0)}` : "RSI yok";
   const resistanceLabel = Number.isFinite(direnc) ? `Direnç ₺${direnc?.toFixed(2)}` : "Direnç yok";
 
+  const dailyChange = Number.isFinite(gunlukDegisim) ? gunlukDegisim as number : null;
+  const dailyChangeColor = dailyChange == null ? colors.mutedForeground : dailyChange >= 0 ? colors.up : colors.down;
+
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, { backgroundColor: colors.card, borderColor: colors.border }, pressed && onPress && { opacity: 0.78 }]}
+    >
       <View style={styles.topRow}>
         <View style={styles.identity}>
           <Text style={[styles.symbol, { color: colors.foreground }]}>{sembol}</Text>
-          <Text style={[styles.price, { color: colors.mutedForeground }]}>₺{guncelFiyat.toFixed(2)}</Text>
+          <View style={styles.priceLine}>
+            <Text style={[styles.price, { color: colors.mutedForeground }]}>₺{guncelFiyat.toFixed(2)}</Text>
+            {dailyChange != null && (
+              <Text style={[styles.dailyChange, { color: dailyChangeColor }]}>
+                {dailyChange >= 0 ? "+" : ""}{dailyChange.toFixed(2)}%
+              </Text>
+            )}
+          </View>
         </View>
         <View style={styles.scoreBox}>
           <Text style={[styles.label, { color: tagColor }]}>{etiket}</Text>
@@ -138,7 +156,7 @@ export default function DecisionCard({
           </View>
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -147,7 +165,9 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   identity: { flexShrink: 1 },
   symbol: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  price: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 3 },
+  priceLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 },
+  price: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  dailyChange: { fontSize: 12, fontFamily: "Inter_700Bold" },
   scoreBox: { alignItems: "flex-end", marginLeft: 8 },
   label: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 0.4 },
   score: { fontSize: 20, fontFamily: "Inter_700Bold", marginTop: 2 },

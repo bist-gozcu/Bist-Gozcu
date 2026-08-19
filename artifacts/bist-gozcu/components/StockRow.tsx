@@ -89,9 +89,9 @@ export default function StockRow({
 }: StockRowProps) {
   const colors = useColors();
   const router = useRouter();
-  const { isFavorite, addFavorite, removeFavorite } = useFavorites();
+  const { favorites, addFavorite, removeFavorite } = useFavorites();
   const meta = getStockMeta(symbol);
-  const fav = isFavorite(symbol);
+  const fav = favorites.includes(symbol.trim().toUpperCase());
 
   const price = quote?.regularMarketPrice;
   const change = quote?.regularMarketChangePercent;

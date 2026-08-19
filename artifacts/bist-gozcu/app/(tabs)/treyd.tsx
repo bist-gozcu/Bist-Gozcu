@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import DecisionCard from "@/components/DecisionCard";
 import { useMarketData } from "@/hooks/useMarketData";
@@ -21,6 +22,7 @@ import { isPiyasaAcik } from "@/utils/seansKontrol";
 export default function TreydScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { data, isLoading, isFetching, error, manuelYenile } = useMarketData("bist100");
   const [results, setResults] = useState<TreydSinyali[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
@@ -124,6 +126,8 @@ export default function TreydScreen() {
                 sembol={item.sembol}
                 skor={item.skor}
                 guncelFiyat={item.fiyat}
+                gunlukDegisim={item.degisimYuzde}
+                onPress={() => router.push({ pathname: "/stock/[symbol]", params: { symbol: item.sembol } })}
                 etiket={item.etiket}
                 teyitSayisi={item.teyitSayisi}
                 toplamTeyit={item.toplamTeyit}
