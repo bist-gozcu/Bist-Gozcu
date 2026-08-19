@@ -1,5 +1,6 @@
 // Dosya: services/collectApi.ts
 
+import { Platform } from "react-native";
 import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
 import { fetchBatchQuotes } from "@/utils/yahooFinance";
 
@@ -34,6 +35,8 @@ type QuoteResponse = {
 const getApiBase = (): string => {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   if (domain) return `https://${domain}/api`;
+  // Native APK’da göreli URL geçersizdir; doğrudan Yahoo chart fallback’i kullanılır.
+  if (Platform.OS !== "web") return "";
   return "/api";
 };
 

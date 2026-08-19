@@ -4,6 +4,76 @@ import YahooFinance from "yahoo-finance2";
 const router = Router();
 const yf = new YahooFinance();
 
+type ChartQuote = {
+  symbol: string;
+  shortName: string;
+  regularMarketPrice: number;
+  regularMarketChangePercent: number;
+  regularMarketChange: number;
+  regularMarketVolume: number;
+  regularMarketPreviousClose: number;
+  regularMarketOpen: number;
+  regularMarketDayHigh: number;
+  regularMarketDayLow: number;
+  fiftyTwoWeekHigh: number;
+  fiftyTwoWeekLow: number;
+  marketCap: number;
+  averageDailyVolume3Month: number;
+};
+
+const numberOrZero = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+async function chartFallbackQuote(symbol: string): Promise<ChartQuote | null> {
+  try {
+    const result = await yf.chart(symbol, {
+      period1: new Date(Date.now() - 90 * 86400000),
+      interval: "1d",
+    });
+    const quotes = (result.quotes ?? []).filter((quote) => numberOrZero(quote.close) > 0);
+    const last = quotes.at(-1);
+    const previous = quotes.at(-2) ?? last;
+    if (!last) return null;
+
+    const price = numberOrZero(last.close);
+    const previousClose = numberOrZero(previous?.close) || price;
+    const change = price - previousClose;
+    const volumes = quotes.map((quote) => numberOrZero(quote.volume)).filter((volume) => volume > 0);
+    const averageVolume = volumes.length
+      ? volumes.reduce((sum, volume) => sum + volume, 0) / volumes.length
+      : 0;
+
+    return {
+      symbol: symbol.replace(".IS", ""),
+      shortName: symbol.replace(".IS", ""),
+      regularMarketPrice: price,
+      regularMarketChangePercent: previousClose ? (change / previousClose) * 100 : 0,
+      regularMarketChange: change,
+      regularMarketVolume: numberOrZero(last.volume),
+      regularMarketPreviousClose: previousClose,
+      regularMarketOpen: numberOrZero(last.open),
+      regularMarketDayHigh: numberOrZero(last.high),
+      regularMarketDayLow: numberOrZero(last.low),
+      fiftyTwoWeekHigh: Math.max(...quotes.map((quote) => numberOrZero(quote.high)), price),
+      fiftyTwoWeekLow: Math.min(...quotes.map((quote) => numberOrZero(quote.low)).filter((low) => low > 0), price),
+      marketCap: 0,
+      averageDailyVolume3Month: averageVolume,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function quoteWithFallback(symbol: string) {
+  try {
+    const quote = await yf.quote(symbol, {}, { validateResult: false });
+    if (quote) return Array.isArray(quote) ? quote[0] ?? null : quote;
+  } catch {
+    // Yahoo quote endpoint may return 401; use chart data below.
+  }
+  return chartFallbackQuote(symbol);
+}
+
 router.get("/bist/quotes", async (req, res) => {
   try {
     const { symbols } = req.query;
@@ -15,39 +85,12 @@ router.get("/bist/quotes", async (req, res) => {
       .split(",")
       .map((s) => `${s.trim().toUpperCase()}.IS`);
 
-    const CHUNK_SIZE = 20;
-    const chunks: string[][] = [];
-    for (let i = 0; i < symbolList.length; i += CHUNK_SIZE) {
-      chunks.push(symbolList.slice(i, i + CHUNK_SIZE));
-    }
-
-    const chunkResults = await Promise.all(
-      chunks.map(async (chunk) => {
-        try {
-          const result = await yf.quote(chunk, {}, { validateResult: false });
-          return Array.isArray(result) ? result : [result];
-        } catch {
-          const perSymbol = await Promise.all(
-            chunk.map(async (sym) => {
-              try {
-                const r = await yf.quote(sym, {}, { validateResult: false });
-                return r;
-              } catch {
-                return null;
-              }
-            })
-          );
-          return perSymbol.filter(Boolean);
-        }
-      })
-    );
-
-    const arr = chunkResults.flat();
-    const normalized = arr
-      .filter((q): q is NonNullable<typeof q> => q != null)
-      .map((q) => ({
-        ...q,
-        symbol: (q.symbol ?? "").replace(".IS", ""),
+    const results = await Promise.all(symbolList.map(quoteWithFallback));
+    const normalized = results
+      .filter((quote): quote is NonNullable<typeof quote> => quote != null)
+      .map((quote) => ({
+        ...quote,
+        symbol: (quote.symbol ?? "").replace(".IS", ""),
       }));
 
     res.json({ quoteResponse: { result: normalized, error: null } });

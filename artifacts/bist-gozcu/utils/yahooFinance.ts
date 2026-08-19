@@ -75,6 +75,91 @@ async function getCrumb(): Promise<string | null> {
   return null;
 }
 
+type YahooChartQuote = {
+  chart?: {
+    result?: Array<{
+      meta?: Record<string, unknown>;
+      timestamp?: number[];
+      indicators?: {
+        quote?: Array<{
+          close?: Array<number | null>;
+          open?: Array<number | null>;
+          high?: Array<number | null>;
+          low?: Array<number | null>;
+          volume?: Array<number | null>;
+        }>;
+      };
+    }>;
+  };
+};
+
+const asNumber = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+async function fetchQuoteFromChart(symbol: string): Promise<QuoteData | null> {
+  try {
+    const yahooSymbol = `${symbol.replace(".IS", "").toUpperCase()}.IS`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=3mo&includePrePost=false`;
+    const res = await fetch(url, { headers: YF_HEADERS });
+    if (!res.ok) return null;
+
+    const json = await res.json() as YahooChartQuote;
+    const result = json.chart?.result?.[0];
+    const meta = result?.meta ?? {};
+    const quote = result?.indicators?.quote?.[0] ?? {};
+    const closes = quote.close ?? [];
+    const opens = quote.open ?? [];
+    const highs = quote.high ?? [];
+    const lows = quote.low ?? [];
+    const volumes = quote.volume ?? [];
+    const validIndexes = closes
+      .map((close, index) => (typeof close === "number" && close > 0 ? index : -1))
+      .filter((index) => index >= 0);
+    const lastIndex = validIndexes.at(-1);
+    if (lastIndex == null) return null;
+
+    const price = asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
+    const previousClose =
+      asNumber(meta.chartPreviousClose) ||
+      asNumber(closes[validIndexes.at(-2) ?? lastIndex]);
+    const change = price - previousClose;
+    const averageVolume = volumes
+      .map(asNumber)
+      .filter((volume) => volume > 0)
+      .reduce((sum, volume, _, values) => sum + volume / values.length, 0);
+
+    return {
+      symbol: symbol.replace(".IS", "").toUpperCase(),
+      shortName: String(meta.shortName ?? meta.longName ?? symbol),
+      regularMarketPrice: price,
+      regularMarketChangePercent: previousClose ? (change / previousClose) * 100 : 0,
+      regularMarketChange: change,
+      regularMarketVolume: asNumber(meta.regularMarketVolume) || asNumber(volumes[lastIndex]),
+      regularMarketPreviousClose: previousClose,
+      regularMarketOpen: asNumber(opens[lastIndex]),
+      regularMarketDayHigh: asNumber(meta.regularMarketDayHigh) || asNumber(highs[lastIndex]),
+      regularMarketDayLow: asNumber(meta.regularMarketDayLow) || asNumber(lows[lastIndex]),
+      fiftyTwoWeekHigh: asNumber(meta.fiftyTwoWeekHigh),
+      fiftyTwoWeekLow: asNumber(meta.fiftyTwoWeekLow),
+      marketCap: asNumber(meta.marketCap),
+      // Quote endpoint’i kapalı olduğunda 5 günlük chart hacmi güvenli yaklaşık değerdir.
+      averageDailyVolume3Month: averageVolume,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchQuotesFromChart(symbols: string[]): Promise<QuoteData[]> {
+  const results: QuoteData[] = [];
+  const concurrency = 8;
+  for (let i = 0; i < symbols.length; i += concurrency) {
+    const batch = await Promise.all(symbols.slice(i, i + concurrency).map(fetchQuoteFromChart));
+    results.push(...batch.filter((quote): quote is QuoteData => quote !== null));
+  }
+  return results;
+}
+
 export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> {
   const proxyBase = getProxyBase();
 
@@ -85,23 +170,16 @@ export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> 
       if (res.ok) {
         const json = await res.json() as Record<string, Record<string, QuoteData[]>>;
         const results = json?.quoteResponse?.result ?? [];
-        return results.map((q) => ({ ...q, symbol: q.symbol.replace(".IS", "") }));
+        if (results.length > 0) {
+          return results.map((q) => ({ ...q, symbol: q.symbol.replace(".IS", "") }));
+        }
       }
     } catch {}
   }
 
-  try {
-    const crumb = await getCrumb();
-    const yahooSymbols = symbols.map((s) => `${s}.IS`).join(",");
-    const crumbParam = crumb ? `&crumb=${encodeURIComponent(crumb)}` : "";
-    const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbols}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketChange,regularMarketVolume,regularMarketPreviousClose,regularMarketOpen,regularMarketDayHigh,regularMarketDayLow,fiftyTwoWeekHigh,fiftyTwoWeekLow,marketCap,averageDailyVolume3Month,shortName${crumbParam}`;
-    const res = await fetch(url, { headers: YF_HEADERS });
-    const json = await res.json() as Record<string, Record<string, QuoteData[]>>;
-    const results = json?.quoteResponse?.result ?? [];
-    return results.map((q) => ({ ...q, symbol: q.symbol.replace(".IS", "") }));
-  } catch {
-    return [];
-  }
+  // Yahoo’nun v7 quote endpoint’i bazı ağlarda 401 döndürüyor. Chart endpoint’i
+  // mobil cihazlarda çalıştığı için fiyat fallback’i olarak kullanılır.
+  return fetchQuotesFromChart(symbols);
 }
 
 function parseChartJson(json: unknown, sym: string): ChartResult | null {
