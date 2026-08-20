@@ -578,92 +578,34 @@ export default function StockDetailScreen() {
               </Text>
 
               <View style={[styles.maRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                {latestMa20 != null && (
-                  <View style={styles.maItem}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>MA 20</Text>
-                    <Text style={[styles.maValue, { color: price != null ? (price > latestMa20 ? colors.up : colors.down) : colors.foreground }]}>
-                      ₺{latestMa20.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
-                      {price != null ? (price > latestMa20 ? "Üstünde" : "Altında") : ""}
-                    </Text>
-                  </View>
-                )}
-                {latestMa50 != null && (
-                  <View style={[styles.maItem, latestMa20 != null && { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>MA 50</Text>
-                    <Text style={[styles.maValue, { color: price != null ? (price > latestMa50 ? colors.up : colors.down) : colors.foreground }]}>
-                      ₺{latestMa50.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
-                      {price != null ? (price > latestMa50 ? "Üstünde" : "Altında") : ""}
-                    </Text>
-                  </View>
-                )}
-                {latestMa100 != null && (
-                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>MA 100</Text>
-                    <Text style={[styles.maValue, { color: price != null ? (price > latestMa100 ? colors.up : colors.down) : colors.foreground }]}>
-                      ₺{latestMa100.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
-                      {price != null ? (price > latestMa100 ? "Üstünde" : "Altında") : ""}
-                    </Text>
-                  </View>
-                )}
-                {latestMa200 != null && (
-                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>MA 200</Text>
-                    <Text style={[styles.maValue, { color: price != null ? (price > latestMa200 ? colors.up : colors.down) : colors.foreground }]}>
-                      ₺{latestMa200.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
-                      {price != null ? (price > latestMa200 ? "Üstünde" : "Altında") : ""}
-                    </Text>
-                  </View>
-                )}
-                {latestAlma != null && (
-                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>ALMA 9</Text>
-                    <Text style={[styles.maValue, { color: price != null ? (price > latestAlma ? colors.up : colors.down) : colors.foreground }]}>
-                      ₺{latestAlma.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
-                      {price != null ? (price > latestAlma ? "Üstünde" : "Altında") : ""}
-                    </Text>
-                  </View>
-                )}
-                {latestT3 != null && (
-                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>Tilson T3</Text>
-                    <Text style={[styles.maValue, { color: price != null ? (price > latestT3 ? colors.up : colors.down) : colors.foreground }]}>
-                      ₺{latestT3.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
-                      {price != null ? (price > latestT3 ? "Üstünde" : "Altında") : ""}
-                    </Text>
-                  </View>
-                )}
-                {latestMacd != null && (
-                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>MACD</Text>
-                    <Text style={[styles.maValue, { color: latestHist != null ? (latestHist > 0 ? colors.up : colors.down) : colors.foreground }]}>
-                      {latestMacd.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>
-                      Hist: {latestHist?.toFixed(2) ?? "—"}
-                    </Text>
-                  </View>
-                )}
-                {latestAtr != null && (
-                  <View style={[styles.maItem, { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border }]}>
-                    <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>ATR</Text>
-                    <Text style={[styles.maValue, { color: price != null && latestAtr / price > 0.03 ? colors.neutral : colors.foreground }]}>
-                      ₺{latestAtr.toFixed(2)}
-                    </Text>
-                    <Text style={[styles.maSub, { color: colors.mutedForeground }]}>Volatilite</Text>
-                  </View>
-                )}
+                {[
+                  { label: "MA 20", val: latestMa20, sub: price != null && latestMa20 != null ? (price > latestMa20 ? "Üstünde" : "Altında") : "" },
+                  { label: "MA 50", val: latestMa50, sub: price != null && latestMa50 != null ? (price > latestMa50 ? "Üstünde" : "Altında") : "" },
+                  { label: "MA 100", val: latestMa100, sub: price != null && latestMa100 != null ? (price > latestMa100 ? "Üstünde" : "Altında") : "" },
+                  { label: "MA 200", val: latestMa200, sub: price != null && latestMa200 != null ? (price > latestMa200 ? "Üstünde" : "Altında") : "" },
+                  { label: "ALMA 9", val: latestAlma, sub: price != null && latestAlma != null ? (price > latestAlma ? "Üstünde" : "Altında") : "" },
+                  { label: "Tilson T3", val: latestT3, sub: price != null && latestT3 != null ? (price > latestT3 ? "Üstünde" : "Altında") : "" },
+                  { label: "MACD", val: latestMacd, sub: `Hist: ${latestHist?.toFixed(2) ?? "—"}`, isMacd: true },
+                  { label: "ATR", val: latestAtr, sub: "Volatilite", isAtr: true },
+                ].map((item, idx) => {
+                  if (item.val == null) return null;
+                  let valColor = colors.foreground;
+                  if (item.isMacd) valColor = latestHist != null ? (latestHist > 0 ? colors.up : colors.down) : colors.foreground;
+                  else if (item.isAtr) valColor = price != null && item.val / price > 0.03 ? colors.neutral : colors.foreground;
+                  else if (price != null) valColor = price > item.val ? colors.up : colors.down;
+
+                  return (
+                    <View key={item.label} style={[styles.maItem, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                      <View>
+                        <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
+                        <Text style={[styles.maSub, { color: colors.mutedForeground }]}>{item.sub}</Text>
+                      </View>
+                      <Text style={[styles.maValue, { color: valColor }]}>
+                        {item.isMacd ? item.val.toFixed(2) : `₺${item.val.toFixed(2)}`}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
 
               {volatility != null && (
@@ -944,15 +886,20 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   maRow: {
-    flexDirection: "row",
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
     marginBottom: 8,
   },
-  maItem: { flex: 1, padding: 12, alignItems: "center" },
-  maLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 4 },
-  maValue: { fontSize: 13, fontFamily: "Inter_700Bold", marginBottom: 2 },
+  maItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  maLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 1 },
+  maValue: { fontSize: 14, fontFamily: "Inter_700Bold" },
   maSub: { fontSize: 10, fontFamily: "Inter_400Regular" },
   performanceCard: {
     marginHorizontal: 16,

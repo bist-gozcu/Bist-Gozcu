@@ -70,7 +70,7 @@ export default function SearchScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[styles.pageHeader, { borderBottomColor: colors.border }]}>
+      <View style={[styles.pageHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 10 }]}>
         <Text style={[styles.pageTitle, { color: colors.foreground }]}>Ara</Text>
       </View>
 
@@ -109,7 +109,7 @@ export default function SearchScreen() {
         showsHorizontalScrollIndicator={false}
         keyExtractor={(s) => s}
         style={[styles.sectorRow, { borderBottomColor: colors.border }]}
-        contentContainerStyle={{ paddingHorizontal: 12, gap: 6, paddingVertical: 8 }}
+        contentContainerStyle={{ paddingHorizontal: 12, gap: 6, paddingVertical: 6 }}
         renderItem={({ item }) => {
           const active = selectedSector === item;
           return (
@@ -199,10 +199,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   toastText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 },
-  sectorRow: { borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0 },
+  sectorRow: { height: 48, borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0 },
   sectorChip: {
+    minHeight: 36,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 20,
     borderWidth: 1,
   },

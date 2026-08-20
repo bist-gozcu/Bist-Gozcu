@@ -46,7 +46,7 @@ export default function FavoritesScreen() {
     }
   }, [refresh]);
 
-  const topPaddingStyle = Platform.OS === "web" ? { paddingTop: insets.top + 10 } : {};
+  const topPaddingStyle = { paddingTop: insets.top + 10 };
 
   return (
     <GestureHandlerRootView style={styles.root}>

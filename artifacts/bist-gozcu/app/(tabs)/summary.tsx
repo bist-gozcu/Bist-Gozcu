@@ -106,7 +106,7 @@ export default function SummaryScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}> 
       <ScrollView
-        contentContainerStyle={{ paddingTop: 12, paddingBottom: insets.bottom + 92 }}
+        contentContainerStyle={{ paddingTop: insets.top + 10, paddingBottom: insets.bottom + 92 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -27,10 +26,11 @@ export default function TreydScreen() {
   const [results, setResults] = useState<TreydSinyali[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const marketOpen = isPiyasaAcik();
 
   const scan = useCallback(async () => {
-    if (!data || isScanning) return;
+    if (!data || isScanning || isRefreshing) return;
 
     setIsScanning(true);
     try {
@@ -40,17 +40,28 @@ export default function TreydScreen() {
     } finally {
       setIsScanning(false);
     }
-  }, [data, isScanning]);
+  }, [data, isScanning, isRefreshing]);
+
+  const refreshAndScan = useCallback(async () => {
+    if (isRefreshing || isScanning) return;
+    setHasScanned(false);
+    setIsRefreshing(true);
+    try {
+      await manuelYenile();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, isScanning, manuelYenile]);
 
   useEffect(() => {
-    if (data && !hasScanned && !isScanning) void scan();
-  }, [data, hasScanned, isScanning, scan]);
+    if (data && !hasScanned && !isScanning && !isRefreshing) void scan();
+  }, [data, hasScanned, isScanning, isRefreshing, scan]);
 
   const sessionLabel = useMemo(
     () => (marketOpen ? "Piyasa açık · canlı tarama mümkün" : "Piyasa kapalı · son veri gösteriliyor"),
     [marketOpen],
   );
-  const scanBusy = isFetching || isScanning;
+  const scanBusy = isFetching || isScanning || isRefreshing;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -58,7 +69,7 @@ export default function TreydScreen() {
         style={[
           styles.header,
           { borderBottomColor: colors.border },
-          Platform.OS === "web" && { paddingTop: insets.top + 10 },
+          { paddingTop: insets.top + 10 },
         ]}
       >
         <View>
@@ -67,8 +78,7 @@ export default function TreydScreen() {
         </View>
         <Pressable
           onPress={() => {
-            setHasScanned(false);
-            void manuelYenile();
+            void refreshAndScan();
           }}
           disabled={scanBusy}
           style={[styles.refreshButton, { backgroundColor: scanBusy ? colors.border : colors.secondary }]}
@@ -99,21 +109,11 @@ export default function TreydScreen() {
         keyExtractor={(item) => item.sembol}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshing={scanBusy}
+        onRefresh={() => void refreshAndScan()}
         ListHeaderComponent={
           <View style={styles.intro}>
-            <View style={styles.introCopy}>
-              <Text style={[styles.introTitle, { color: colors.foreground }]}>Günün 6 adayı</Text>
-              <Text style={[styles.introText, { color: colors.mutedForeground }]}>Günlük trend, direnç kırılımı, hacim, RSI ve yüksek dip–yüksek tepe yapısı birlikte kontrol edilir. Teyitler eksikse uyarı güçlü alım olarak gösterilmez.</Text>
-            </View>
-            <Pressable
-              onPress={() => void scan()}
-              disabled={scanBusy || !data}
-              style={[styles.scanButton, { backgroundColor: scanBusy || !data ? colors.border : colors.primary }]}
-            >
-              <Text style={[styles.scanButtonText, { color: scanBusy || !data ? colors.mutedForeground : colors.primaryForeground }]}>
-                {isFetching ? "Veri alınıyor..." : isScanning ? "Teyit ediliyor..." : "Taramayı Başlat"}
-              </Text>
-            </Pressable>
+            <Text style={[styles.introTitle, { color: colors.foreground }]}>Radar’a Girenler</Text>
           </View>
         }
         renderItem={({ item, index }) => (
@@ -152,8 +152,8 @@ export default function TreydScreen() {
               <ActivityIndicator color={colors.primary} />
             ) : (
               <>
-                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{error ? "Veri alınamadı" : hasScanned ? "Pozitif aday bulunamadı" : "Tarama hazır"}</Text>
-                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{error ? "Bağlantıyı kontrol edip yeniden deneyin." : "İlk 6 sonucu görmek için taramayı başlatın."}</Text>
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{error ? "Veri alınamadı" : hasScanned ? "Radar sonucu bulunamadı" : "Radar taraması hazırlanıyor"}</Text>
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{error ? "Bağlantıyı kontrol edip aşağı çekerek yeniden deneyin." : "Veriler hazır olduğunda teyitli adaylar burada görünür."}</Text>
               </>
             )}
           </View>
@@ -176,12 +176,8 @@ const styles = StyleSheet.create({
   notice: { marginHorizontal: 12, marginTop: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
   noticeText: { fontSize: 10, lineHeight: 14, fontFamily: "Inter_400Regular" },
   listContent: { paddingHorizontal: 12 },
-  intro: { paddingVertical: 12, gap: 12 },
-  introCopy: { gap: 3 },
+  intro: { paddingVertical: 12 },
   introTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  introText: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
-  scanButton: { borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  scanButtonText: { fontSize: 13, fontFamily: "Inter_700Bold" },
   resultRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 10 },
   rank: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", marginTop: 14 },
   rankText: { fontSize: 11, fontFamily: "Inter_700Bold" },
