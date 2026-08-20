@@ -54,7 +54,7 @@ export default function DecisionCard({
   stopFiyat,
   etiket = "TAKİP LİSTESİ",
   teyitSayisi = 0,
-  toplamTeyit = 7,
+  toplamTeyit = 6,
   trendTeyitli = false,
   gunlukTrend = "sideways",
   direnc,

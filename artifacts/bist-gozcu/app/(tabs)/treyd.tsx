@@ -101,7 +101,7 @@ export default function TreydScreen() {
       </View>
 
       <View style={[styles.notice, { backgroundColor: `${colors.neutral}12`, borderColor: `${colors.neutral}30` }]}>
-        <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Günlük yükseliş yalnızca ön elemedir. Momentum etiketi için en az 5/7, güçlü alım için 7/7 teyit gerekir; bu ekran kesin sonuç veya yatırım tavsiyesi değildir.</Text>
+        <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Günlük yükseliş yalnızca ön elemedir. Momentum etiketi için en az 5/6, güçlü alım için 6/6 teyit gerekir; bu ekran kesin sonuç veya yatırım tavsiyesi değildir.</Text>
       </View>
 
       <FlatList

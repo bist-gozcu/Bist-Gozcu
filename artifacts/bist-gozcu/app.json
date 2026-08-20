@@ -62,7 +62,6 @@
         }
       ],
       "expo-font",
-      "expo-web-browser",
       "expo-updates",
       [
         "expo-notifications",
