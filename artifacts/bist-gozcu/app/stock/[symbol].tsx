@@ -46,6 +46,11 @@ import {
   IconTrendingDown,
   IconTrash,
   IconX,
+  IconCandle,
+  IconLineChart,
+  IconExpand,
+  IconCollapse,
+  IconCloseCircle,
 } from "@/components/TabIcon";
 
 const RANGES: { key: ChartRange; label: string }[] = [
@@ -129,6 +134,8 @@ export default function StockDetailScreen() {
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
   const [range, setRange] = useState<ChartRange>("1d");
+  const [chartType, setChartType] = useState<"line" | "candle">("candle");
+  const [showFullscreenChart, setShowFullscreenChart] = useState(false);
   const [showAlarmModal, setShowAlarmModal] = useState(false);
   const [alarmTarget, setAlarmTarget] = useState("");
   const [alarmType, setAlarmType] = useState<AlertType>("above");
@@ -483,6 +490,22 @@ export default function StockDetailScreen() {
               </Text>
             </Pressable>
           ))}
+          <Pressable
+            onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")}
+            style={[styles.chartTypeBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+            accessibilityRole="button"
+            accessibilityLabel={chartType === "candle" ? "Çizgi grafiğe geç" : "Mum grafiğe geç"}
+          >
+            {chartType === "candle" ? <IconLineChart color={colors.up} size={18} /> : <IconCandle color={colors.up} size={18} />}
+          </Pressable>
+          <Pressable
+            onPress={() => setShowFullscreenChart(true)}
+            style={[styles.chartExpandBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+            accessibilityRole="button"
+            accessibilityLabel="Grafiği tam ekran aç"
+          >
+            <IconExpand color={colors.foreground} size={18} />
+          </Pressable>
         </View>
 
         {/* Chart */}
@@ -493,9 +516,13 @@ export default function StockDetailScreen() {
         ) : chart && chart.closes.filter((c) => c > 0).length >= 2 ? (
           <PriceChart
             closes={chart.closes}
+            opens={chart.opens}
+            highs={chart.highs}
+            lows={chart.lows}
             volumes={chart.volumes}
             timestamps={chart.timestamps}
             range={range}
+            chartType={chartType}
           />
         ) : (
           <View style={styles.chartLoader}>
@@ -690,6 +717,57 @@ export default function StockDetailScreen() {
 
 
 
+      {/* ── Fullscreen chart modal ── */}
+      <Modal
+        visible={showFullscreenChart}
+        animationType="slide"
+        onRequestClose={() => setShowFullscreenChart(false)}
+      >
+        <View style={[styles.fullscreenChartRoot, { backgroundColor: colors.background, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
+          <View style={styles.fullscreenHeader}>
+            <View>
+              <Text style={[styles.fullscreenTitle, { color: colors.foreground }]}>{symbolText}</Text>
+              <Text style={[styles.fullscreenSubtitle, { color: colors.mutedForeground }]}>Detaylı grafik · {range.toUpperCase()}</Text>
+            </View>
+            <Pressable onPress={() => setShowFullscreenChart(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Grafiği kapat">
+              <IconCloseCircle color={colors.mutedForeground} size={24} />
+            </Pressable>
+          </View>
+
+          <View style={[styles.fullscreenRangeRow, { borderColor: colors.border, backgroundColor: colors.card }]}>
+            {RANGES.map(({ key, label }) => (
+              <Pressable key={key} onPress={() => handleRangeChange(key)} style={[styles.fullscreenRangeBtn, range === key && { backgroundColor: colors.primary }]}>
+                <Text style={[styles.rangeBtnText, { color: range === key ? "#fff" : colors.mutedForeground }]}>{label}</Text>
+              </Pressable>
+            ))}
+            <Pressable onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")} style={styles.fullscreenTypeBtn}>
+              {chartType === "candle" ? <IconLineChart color={colors.up} size={20} /> : <IconCandle color={colors.up} size={20} />}
+            </Pressable>
+          </View>
+
+          <View style={styles.fullscreenChartArea}>
+            {loadingChart ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : chart && chart.closes.filter((c) => c > 0).length >= 2 ? (
+              <PriceChart
+                closes={chart.closes}
+                opens={chart.opens}
+                highs={chart.highs}
+                lows={chart.lows}
+                volumes={chart.volumes}
+                timestamps={chart.timestamps}
+                range={range}
+                chartType={chartType}
+                height={420}
+              />
+            ) : (
+              <Text style={{ color: colors.mutedForeground }}>Grafik verisi yok</Text>
+            )}
+          </View>
+          <Text style={[styles.fullscreenHint, { color: colors.mutedForeground }]}>Mum/çizgi düğmesi görünümü değiştirir. Zaman aralığı değiştiğinde grafik aynı aralıkta yeniden yüklenir.</Text>
+        </View>
+      </Modal>
+
       {/* ── Price alert modal ── */}
       <Modal
         visible={showAlarmModal}
@@ -835,6 +913,17 @@ const styles = StyleSheet.create({
   rangeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   rangeBtnActive: {},
   rangeBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  chartTypeBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
+  chartExpandBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
+  fullscreenChartRoot: { flex: 1, paddingHorizontal: 12 },
+  fullscreenHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 12 },
+  fullscreenTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  fullscreenSubtitle: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  fullscreenRangeRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, padding: 6, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  fullscreenRangeBtn: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
+  fullscreenTypeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  fullscreenChartArea: { flex: 1, alignItems: "center", justifyContent: "center", marginTop: 12 },
+  fullscreenHint: { textAlign: "center", fontSize: 11, lineHeight: 16, paddingHorizontal: 12, paddingBottom: 4 },
   chartLoader: { height: 236, alignItems: "center", justifyContent: "center" },
   section: { padding: 16, borderBottomWidth: StyleSheet.hairlineWidth },
   sectionTitle: { fontSize: 14, fontFamily: "Inter_700Bold", marginBottom: 14, letterSpacing: 0.2 },

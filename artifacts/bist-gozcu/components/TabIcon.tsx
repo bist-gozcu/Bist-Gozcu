@@ -223,3 +223,55 @@ export function IconMinus({ color, size = 14 }: IconProps) {
     </Svg>
   );
 }
+
+export function IconCandle({ color, size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1="7" y1="3" x2="7" y2="21" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <Rect x="4.5" y="7" width="5" height="9" rx="1" fill={color} opacity="0.9" />
+      <Line x1="17" y1="3" x2="17" y2="21" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <Rect x="14.5" y="5" width="5" height="6" rx="1" fill="none" stroke={color} strokeWidth="1.8" />
+    </Svg>
+  );
+}
+
+export function IconLineChart({ color, size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polyline points="3 17 8 11 12 14 21 5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <Line x1="3" y1="20" x2="21" y2="20" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IconExpand({ color, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polyline points="8 3 3 3 3 8" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <Polyline points="16 3 21 3 21 8" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <Polyline points="8 21 3 21 3 16" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <Polyline points="16 21 21 21 21 16" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function IconCollapse({ color, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polyline points="9 9 3 9 3 3" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <Polyline points="15 9 21 9 21 3" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <Polyline points="9 15 3 15 3 21" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <Polyline points="15 15 21 15 21 21" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function IconCloseCircle({ color, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
+      <Line x1="9" y1="9" x2="15" y2="15" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <Line x1="15" y1="9" x2="9" y2="15" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    </Svg>
+  );
+}

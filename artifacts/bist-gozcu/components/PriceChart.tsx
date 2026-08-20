@@ -23,7 +23,7 @@ interface PriceChartProps {
   timestamps: number[];
   range: ChartRange;
   chartType?: ChartType;
-  onToggleType?: () => void;
+  height?: number;
 }
 
 const CHART_H = 200;
@@ -36,20 +36,17 @@ const SESSION_START_HOUR = 10;
 const SESSION_END_HOUR = 18;
 const SESSION_END_MINUTE = 10;
 
-type Point = { c: number; v: number; t: number; x: number; y: number };
+type Point = { c: number; o: number; h: number; l: number; v: number; t: number; x: number; y: number };
 type LineSegment = { d: string; color: string };
+type Candle = { x: number; openY: number; closeY: number; highY: number; lowY: number; color: string; width: number };
+
+type Label = { x: number; label: string };
 
 function formatDate(ts: number, range: ChartRange): string {
   const d = new Date(ts * 1000);
-  if (range === "1d") {
-    return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-  }
-  if (range === "5d") {
-    return d.toLocaleDateString("tr-TR", { weekday: "short", day: "numeric" });
-  }
-  if (range === "5y" || range === "1y") {
-    return d.toLocaleDateString("tr-TR", { month: "short", year: "2-digit" });
-  }
+  if (range === "1d") return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  if (range === "5d") return d.toLocaleDateString("tr-TR", { weekday: "short", day: "numeric" });
+  if (range === "5y" || range === "1y") return d.toLocaleDateString("tr-TR", { month: "short", year: "2-digit" });
   return d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
 }
 
@@ -70,49 +67,62 @@ function localSessionBounds(timestamp: number): { start: number; end: number } {
   return { start: start.getTime() / 1000, end: end.getTime() / 1000 };
 }
 
-export default function PriceChart({ closes, volumes, timestamps, range }: PriceChartProps) {
+export default function PriceChart({
+  closes,
+  opens,
+  highs,
+  lows,
+  volumes,
+  timestamps,
+  range,
+  chartType = "line",
+  height: chartHeight = 200,
+}: PriceChartProps) {
   const colors = useColors();
   const { width } = useWindowDimensions();
-
   const chartW = Math.max(180, width - ML - MR);
-  const priceH = CHART_H - VOL_H - 6;
+  const volH = chartHeight >= 300 ? 48 : VOL_H;
+  const priceH = chartHeight - volH - 6;
 
   const {
     pathFill,
     lineSegments,
+    candles,
     baselineY,
     baselineLabel,
     baselineColor,
     volBars,
     xLabels,
     yLabels,
-    minP,
-    maxP,
   } = useMemo(() => {
     const valid = closes
-      .map((c, i) => ({ c, v: volumes[i] ?? 0, t: timestamps[i] ?? 0 }))
+      .map((c, i) => {
+        const open = opens?.[i] != null && opens[i] > 0 ? opens[i] : c;
+        const high = highs?.[i] != null && highs[i] > 0 ? highs[i] : Math.max(open, c);
+        const low = lows?.[i] != null && lows[i] > 0 ? lows[i] : Math.min(open, c);
+        return { c, o: open, h: Math.max(high, open, c), l: Math.min(low, open, c), v: volumes[i] ?? 0, t: timestamps[i] ?? 0 };
+      })
       .filter((d) => d.c > 0 && d.t > 0);
 
     if (valid.length < 2) {
       return {
         pathFill: "",
         lineSegments: [] as LineSegment[],
+        candles: [] as Candle[],
         baselineY: 0,
         baselineLabel: "Başlangıç",
         baselineColor: colors.mutedForeground,
         volBars: [] as { x: number; h: number; w: number; color: string }[],
-        xLabels: [] as { x: number; label: string }[],
+        xLabels: [] as Label[],
         yLabels: [] as { y: number; label: string }[],
-        minP: 0,
-        maxP: 0,
       };
     }
 
     const cs = valid.map((d) => d.c);
     const vs = valid.map((d) => d.v);
     const ts = valid.map((d) => d.t);
-    const minP = Math.min(...cs);
-    const maxP = Math.max(...cs);
+    const minP = Math.min(...valid.map((d) => d.l));
+    const maxP = Math.max(...valid.map((d) => d.h));
     const pRange = maxP - minP || 1;
     const firstPrice = cs[0];
     const lastPrice = cs[cs.length - 1];
@@ -120,9 +130,7 @@ export default function PriceChart({ closes, volumes, timestamps, range }: Price
     const session = range === "1d" ? localSessionBounds(ts[ts.length - 1]) : null;
 
     const x = (i: number): number => {
-      if (!session || range !== "1d") {
-        return ML + (i / (valid.length - 1)) * chartW;
-      }
+      if (!session || range !== "1d") return ML + (i / (valid.length - 1)) * chartW;
       const ratio = Math.max(0, Math.min(1, (valid[i].t - session.start) / (session.end - session.start)));
       return ML + ratio * chartW;
     };
@@ -132,7 +140,6 @@ export default function PriceChart({ closes, volumes, timestamps, range }: Price
       return ML + ratio * chartW;
     };
     const y = (p: number): number => MT + priceH * (1 - (p - minP) / pRange);
-
     const pts: Point[] = valid.map((d, i) => ({ ...d, x: x(i), y: y(d.c) }));
     const pathLine = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     const pathFill = `${pathLine} L${pts[pts.length - 1].x.toFixed(1)},${(MT + priceH).toFixed(1)} L${pts[0].x.toFixed(1)},${(MT + priceH).toFixed(1)} Z`;
@@ -140,12 +147,22 @@ export default function PriceChart({ closes, volumes, timestamps, range }: Price
       d: `M${pts[i].x.toFixed(1)},${pts[i].y.toFixed(1)} L${point.x.toFixed(1)},${point.y.toFixed(1)}`,
       color: point.c >= pts[i].c ? colors.up : colors.down,
     }));
+    const candleWidth = Math.max(3, Math.min(10, (chartW / valid.length) * 0.68));
+    const candles: Candle[] = pts.map((point, i) => ({
+      x: point.x,
+      openY: y(valid[i].o),
+      closeY: y(valid[i].c),
+      highY: y(valid[i].h),
+      lowY: y(valid[i].l),
+      color: valid[i].c >= valid[i].o ? colors.up : colors.down,
+      width: candleWidth,
+    }));
 
     const maxVol = Math.max(...vs, 1);
     const barW = Math.max(1, chartW / Math.max(valid.length, 1) - 1);
     const volBars = vs.map((v, i) => ({
       x: x(i) - barW / 2,
-      h: (v / maxVol) * VOL_H,
+      h: (v / maxVol) * volH,
       w: barW,
       color: i === 0 || valid[i].c >= valid[i - 1].c ? colors.up : colors.down,
     }));
@@ -166,36 +183,34 @@ export default function PriceChart({ closes, volumes, timestamps, range }: Price
           });
         })();
 
-    const yLabelCount = 4;
-    const yLabels = Array.from({ length: yLabelCount }, (_, i) => {
-      const p = minP + (pRange * i) / (yLabelCount - 1);
+    const yLabels = Array.from({ length: 4 }, (_, i) => {
+      const p = minP + (pRange * i) / 3;
       return { y: y(p), label: formatPrice(p) };
     });
 
     return {
       pathFill,
       lineSegments,
+      candles,
       baselineY: y(firstPrice),
       baselineLabel: `Başlangıç ${formatPrice(firstPrice)}`,
       baselineColor: overallColor,
       volBars,
       xLabels,
       yLabels,
-      minP,
-      maxP,
     };
-  }, [closes, volumes, timestamps, range, chartW, priceH, colors]);
+  }, [closes, opens, highs, lows, volumes, timestamps, range, chartType, chartHeight, chartW, priceH, volH, colors]);
 
   if (closes.filter((c) => c > 0).length < 2) {
     return (
-      <View style={[styles.empty, { height: CHART_H + MB }]}>
+      <View style={[styles.empty, { height: chartHeight + MB }]}>
+
         <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Grafik verisi yükleniyor...</Text>
       </View>
     );
   }
 
-  const totalH = CHART_H + MB;
-
+  const totalH = chartHeight + MB;
   return (
     <View>
       <Svg width={width} height={totalH}>
@@ -205,26 +220,40 @@ export default function PriceChart({ closes, volumes, timestamps, range }: Price
             <Stop offset="1" stopColor={baselineColor} stopOpacity="0" />
           </LinearGradient>
         </Defs>
-
         {yLabels.map((lbl, i) => (
           <React.Fragment key={`grid-${i}`}>
             <Line x1={ML} y1={lbl.y} x2={ML + chartW} y2={lbl.y} stroke={colors.border} strokeWidth={0.5} strokeDasharray="3,4" />
             <SvgText x={ML - 4} y={lbl.y + 4} fontSize={9} fill={colors.mutedForeground} textAnchor="end">{lbl.label}</SvgText>
           </React.Fragment>
         ))}
-
-        <Path d={pathFill} fill="url(#grad)" />
+        {chartType === "line" ? (
+          <>
+            <Path d={pathFill} fill="url(#grad)" />
+            {lineSegments.map((segment, i) => (
+              <Path key={`line-${i}`} d={segment.d} stroke={segment.color} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            ))}
+          </>
+        ) : (
+          candles.map((candle, i) => (
+            <React.Fragment key={`candle-${i}`}>
+              <Line x1={candle.x} y1={candle.highY} x2={candle.x} y2={candle.lowY} stroke={candle.color} strokeWidth={1.2} />
+              <Rect
+                x={candle.x - candle.width / 2}
+                y={Math.min(candle.openY, candle.closeY)}
+                width={candle.width}
+                height={Math.max(1.5, Math.abs(candle.closeY - candle.openY))}
+                fill={candle.color}
+                stroke={candle.color}
+                rx={0.7}
+              />
+            </React.Fragment>
+          ))
+        )}
         <Line x1={ML} y1={baselineY} x2={ML + chartW} y2={baselineY} stroke={baselineColor} strokeWidth={1} strokeDasharray="5,4" opacity={0.75} />
         <SvgText x={ML + 4} y={baselineY - 4} fontSize={8} fill={baselineColor}>{baselineLabel}</SvgText>
-
-        {lineSegments.map((segment, i) => (
-          <Path key={`line-${i}`} d={segment.d} stroke={segment.color} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        ))}
-
         {volBars.map((bar, i) => (
-          <Rect key={`vol-${i}`} x={bar.x} y={MT + priceH + 6 + (VOL_H - bar.h)} width={bar.w} height={bar.h} fill={bar.color} opacity={0.35} />
+          <Rect key={`vol-${i}`} x={bar.x} y={MT + priceH + 6 + (volH - bar.h)} width={bar.w} height={bar.h} fill={bar.color} opacity={0.35} />
         ))}
-
         {xLabels.map((lbl, i) => (
           <SvgText key={`x-${i}`} x={lbl.x} y={totalH - 4} fontSize={9} fill={colors.mutedForeground} textAnchor="middle">{lbl.label}</SvgText>
         ))}
