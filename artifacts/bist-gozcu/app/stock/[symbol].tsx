@@ -25,13 +25,10 @@ import { fetchChartData, fetchStockOverview, ChartResult, ChartRange, getMarketS
 import {
   analyzeStock,
   AnalysisResult,
-  alma,
   atr,
   macd,
-  moneyFlowIndex,
   rsi,
   sma,
-  tilsonT3,
 } from "@/utils/indicators";
 import { getStockMeta } from "@/constants/bistStocks";
 import PriceChart from "@/components/PriceChart";
@@ -76,10 +73,6 @@ const INDICATOR_INFO: Record<string, { title: string; body: string }> = {
   RSI: {
     title: "RSI (Göreceli Güç Endeksi)",
     body: "Fiyatın son 14 günde ne kadar hızlı yükselip düştüğünü ölçer (0-100). 30'un altı 'aşırı satım' (tepki alımı gelebilir), 70'in üstü 'aşırı alım' (kâr satışı gelebilir) anlamına gelir. Tek başına al/sat kararı için yeterli değildir, trend yönüyle birlikte değerlendirilmelidir.",
-  },
-  MFI: {
-    title: "MFI (Para Akışı Endeksi)",
-    body: "RSI'a benzer ama hacmi de hesaba katar (0-100). 20'nin altı para girişinin zayıfladığını, 80'in üstü aşırı yüksek para girişi olduğunu (satış riski) gösterir. Hacim temelli olduğu için RSI'ı teyit etmek amacıyla birlikte kullanılır.",
   },
 };
 
@@ -249,25 +242,17 @@ export default function StockDetailScreen() {
   const n = chart?.closes.length ?? 0;
   const macdData    = chart && n >= 26 ? macd(chart.closes) : null;
   const rsiData     = chart && n >= 14 ? rsi(chart.closes) : null;
-  const mfiData     = chart && n >= 14 ? moneyFlowIndex(chart.highs, chart.lows, chart.closes, chart.volumes) : null;
   const ma20Data    = chart && n >= 20 ? sma(chart.closes, 20) : null;
   const ma50Data    = chart && n >= 50 ? sma(chart.closes, 50) : null;
-  const ma100Data   = chart && n >= 100 ? sma(chart.closes, 100) : null;
   const ma200Data   = chart && n >= 200 ? sma(chart.closes, 200) : null;
-  const almaData    = chart && n >= 9 ? alma(chart.closes, 9) : null;
-  const t3Data      = chart && n >= 25 ? tilsonT3(chart.closes, 5) : null;
   const atrData     = chart && n >= 15 ? atr(chart.highs, chart.lows, chart.closes, 14) : null;
 
   const latestMacd  = macdData?.macd[n - 1];
   const latestHist  = macdData?.histogram[n - 1];
   const latestRsi   = rsiData?.[n - 1];
-  const latestMfi   = mfiData?.[n - 1];
   const latestMa20  = ma20Data?.[n - 1];
   const latestMa50  = ma50Data?.[n - 1];
-  const latestMa100 = ma100Data?.[n - 1];
   const latestMa200 = ma200Data?.[n - 1];
-  const latestAlma  = almaData?.[n - 1];
-  const latestT3    = t3Data?.[n - 1];
   const latestAtr   = atrData?.[n - 1];
   const chartOverlays = chart ? [
     { label: "SMA 20", values: sma(chart.closes, 20), color: "#c084fc" },
@@ -335,11 +320,6 @@ export default function StockDetailScreen() {
       else if (latestRsi < 45) lines.push(`RSI ${latestRsi.toFixed(0)} seviyesinde, satıcı baskısı hafif üstün.`);
     }
 
-    if (latestMfi != null) {
-      if (latestMfi >= 80) lines.push(`Para akışı endeksi (MFI) ${latestMfi.toFixed(0)} ile aşırı yüksek, kâr satışı ihtimali var.`);
-      else if (latestMfi <= 20) lines.push(`Para akışı endeksi (MFI) ${latestMfi.toFixed(0)} ile düşük, para girişi zayıf.`);
-    }
-
     if (latestMacd != null && latestHist != null) {
       if (latestHist > 0 && latestMacd > 0) lines.push(`MACD pozitif bölgede ve histogram artıda, momentum yukarı yönlü.`);
       else if (latestHist < 0 && latestMacd < 0) lines.push(`MACD negatif bölgede ve histogram ekside, momentum aşağı yönlü.`);
@@ -388,9 +368,6 @@ export default function StockDetailScreen() {
 
   const rsiColor = latestRsi == null ? colors.mutedForeground :
     latestRsi < 30 ? colors.up : latestRsi > 70 ? colors.down : colors.neutral;
-  const mfiColor = latestMfi == null ? colors.mutedForeground :
-    latestMfi < 20 ? colors.up : latestMfi > 80 ? colors.down : colors.neutral;
-
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <Stack.Screen
@@ -619,22 +596,16 @@ export default function StockDetailScreen() {
                 {latestRsi != null && (
                   <IndicatorCard label="RSI" subLabel="Aşırı Al/Sat" value={latestRsi} min={0} max={100} color={rsiColor} onInfoPress={() => setInfoKey("RSI")} />
                 )}
-                {latestMfi != null && (
-                  <IndicatorCard label="MFI" subLabel="Para Akışı" value={latestMfi} min={0} max={100} color={mfiColor} onInfoPress={() => setInfoKey("MFI")} />
-                )}
               </View>
               <Text style={[styles.indHint, { color: colors.mutedForeground }]}>
-                Bu göstergeler birbirini teyit etmek için birlikte kullanılır; hiçbiri tek başına kesin sinyal sayılmaz. Detay için bir göstergeye dokunun.
+                Göstergeler birlikte değerlendirilir; hiçbiri tek başına kesin sinyal sayılmaz.
               </Text>
 
               <View style={[styles.maRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 {[
                   { label: "MA 20", val: latestMa20, sub: price != null && latestMa20 != null ? (price > latestMa20 ? "Üstünde" : "Altında") : "" },
                   { label: "MA 50", val: latestMa50, sub: price != null && latestMa50 != null ? (price > latestMa50 ? "Üstünde" : "Altında") : "" },
-                  { label: "MA 100", val: latestMa100, sub: price != null && latestMa100 != null ? (price > latestMa100 ? "Üstünde" : "Altında") : "" },
                   { label: "MA 200", val: latestMa200, sub: price != null && latestMa200 != null ? (price > latestMa200 ? "Üstünde" : "Altında") : "" },
-                  { label: "ALMA 9", val: latestAlma, sub: price != null && latestAlma != null ? (price > latestAlma ? "Üstünde" : "Altında") : "" },
-                  { label: "Tilson T3", val: latestT3, sub: price != null && latestT3 != null ? (price > latestT3 ? "Üstünde" : "Altında") : "" },
                   { label: "MACD", val: latestMacd, sub: `Hist: ${latestHist?.toFixed(2) ?? "—"}`, isMacd: true },
                   { label: "ATR", val: latestAtr, sub: "Volatilite", isAtr: true },
                 ].map((item, idx) => {

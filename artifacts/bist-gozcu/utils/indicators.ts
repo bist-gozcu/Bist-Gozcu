@@ -31,75 +31,6 @@ export function ema(prices: number[], period: number): number[] {
   return result;
 }
 
-export function alma(
-  prices: number[],
-  period = 9,
-  offset = 0.85,
-  sigma = 6,
-): number[] {
-  const result: number[] = new Array(prices.length).fill(NaN);
-  const center = offset * (period - 1);
-  const denominator = 2 * sigma * sigma;
-  const weights = Array.from({ length: period }, (_, i) =>
-    Math.exp(-Math.pow(i - center, 2) / denominator),
-  );
-  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
-
-  for (let i = period - 1; i < prices.length; i++) {
-    const window = prices.slice(i - period + 1, i + 1);
-    result[i] =
-      window.reduce((sum, price, index) => sum + price * weights[index], 0) /
-      weightTotal;
-  }
-  return result;
-}
-
-export function tilsonT3(
-  prices: number[],
-  period = 5,
-  volumeFactor = 0.7,
-): number[] {
-  const smooth = (input: number[]) => {
-    const result: number[] = new Array(input.length).fill(NaN);
-    let previous = NaN;
-    let count = 0;
-    for (let i = 0; i < input.length; i++) {
-      const value = input[i];
-      if (isNaN(value)) continue;
-      if (isNaN(previous)) {
-        previous = value;
-      } else {
-        previous = value * (2 / (period + 1)) + previous * (1 - 2 / (period + 1));
-      }
-      count++;
-      if (count >= period) result[i] = previous;
-    }
-    return result;
-  };
-  const e1 = smooth(prices);
-  const e2 = smooth(e1);
-  const e3 = smooth(e2);
-  const e4 = smooth(e3);
-  const e5 = smooth(e4);
-  const e6 = smooth(e5);
-  const result: number[] = new Array(prices.length).fill(NaN);
-  const v = volumeFactor;
-  const c1 = -v * v * v;
-  const c2 = 3 * v * v + 3 * v * v * v;
-  const c3 = -6 * v * v - 3 * v - 3 * v * v * v;
-  const c4 = 1 + 3 * v + v * v * v + 3 * v * v;
-
-  for (let i = 0; i < prices.length; i++) {
-    if (isNaN(e6[i]) || isNaN(e5[i]) || isNaN(e4[i]) || isNaN(e3[i])) continue;
-    result[i] =
-      c1 * e6[i] +
-      c2 * e5[i] +
-      c3 * e4[i] +
-      c4 * e3[i];
-  }
-  return result;
-}
-
 export interface MACDResult {
   macd: number[];
   signal: number[];
@@ -152,55 +83,6 @@ export function rsi(prices: number[], period = 14): number[] {
   return result;
 }
 
-export interface BollingerBands {
-  upper: number[];
-  middle: number[];
-  lower: number[];
-}
-
-export function bollingerBands(prices: number[], period = 20, stdDev = 2): BollingerBands {
-  const middle = sma(prices, period);
-  const upper: number[] = [];
-  const lower: number[] = [];
-  for (let i = 0; i < prices.length; i++) {
-    if (isNaN(middle[i])) {
-      upper.push(NaN);
-      lower.push(NaN);
-    } else {
-      const slice = prices.slice(i - period + 1, i + 1);
-      const mean = middle[i];
-      const variance = slice.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / period;
-      const sd = Math.sqrt(variance);
-      upper.push(mean + stdDev * sd);
-      lower.push(mean - stdDev * sd);
-    }
-  }
-  return { upper, middle, lower };
-}
-
-export function moneyFlowIndex(
-  highs: number[],
-  lows: number[],
-  closes: number[],
-  volumes: number[],
-  period = 14
-): number[] {
-  const typicalPrices = closes.map((c, i) => (c + highs[i] + lows[i]) / 3);
-  const rawMoneyFlow = typicalPrices.map((tp, i) => tp * volumes[i]);
-  const result: number[] = new Array(closes.length).fill(NaN);
-  for (let i = period; i < closes.length; i++) {
-    let posFlow = 0;
-    let negFlow = 0;
-    for (let j = i - period + 1; j <= i; j++) {
-      if (typicalPrices[j] > typicalPrices[j - 1]) posFlow += rawMoneyFlow[j];
-      else negFlow += rawMoneyFlow[j];
-    }
-    const ratio = negFlow === 0 ? 100 : posFlow / negFlow;
-    result[i] = 100 - 100 / (1 + ratio);
-  }
-  return result;
-}
-
 /* ─── ATR (Average True Range) ─── */
 export function atr(
   highs: number[],
@@ -238,7 +120,6 @@ export interface AnalysisResult {
   reasons: string[];
   rsiValue: number;
   macdValue: number;
-  mfiValue: number;
   ma20: number;
   ma50: number;
   currentPrice: number;
@@ -263,7 +144,6 @@ export function analyzeStock(
     reasons: ["Yetersiz veri"],
     rsiValue: NaN,
     macdValue: NaN,
-    mfiValue: NaN,
     ma20: NaN,
     ma50: NaN,
     currentPrice: closes[n - 1] ?? 0,
@@ -289,10 +169,7 @@ export function analyzeStock(
   const ma50Arr = sma(closes, 50);
   const ma20 = ma20Arr[n - 1] ?? NaN;
   const ma50 = ma50Arr[n - 1] ?? NaN;
-  const mfiArr = moneyFlowIndex(highs, lows, closes, volumes, 14);
-  const mfiVal = mfiArr[n - 1] ?? NaN;
-
-  /* --- new indicators --- */
+  /* --- volatility indicator for risk distance only --- */
   const atrArr = atr(highs, lows, closes, 14);
   const atrVal = atrArr[n - 1] ?? NaN;
 
@@ -321,12 +198,6 @@ export function analyzeStock(
     else if (currentPrice < ma20 && currentPrice < ma50) { score -= 1; reasons.push("Fiyat MA20 & MA50 altında"); }
     if (ma20 > ma50) { score += 1; reasons.push("MA20 > MA50 (yükseliş trendi)"); }
     else { score -= 1; reasons.push("MA20 < MA50 (düşüş trendi)"); }
-  }
-
-  /* MFI */
-  if (!isNaN(mfiVal)) {
-    if (mfiVal < 20) { score += 1; reasons.push(`Para akışı düşük (MFI: ${mfiVal.toFixed(0)})`); }
-    else if (mfiVal > 80) { score -= 1; reasons.push(`Para akışı yüksek (MFI: ${mfiVal.toFixed(0)})`); }
   }
 
   /* Volume confirmation: son TAMAMLANMIŞ günün hacmi, önceki 20 günlük ortalamanın üstünde mi?
@@ -374,7 +245,6 @@ export function analyzeStock(
     reasons,
     rsiValue: rsiVal,
     macdValue: macdVal,
-    mfiValue: mfiVal,
     ma20,
     ma50,
     currentPrice,

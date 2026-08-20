@@ -1,10 +1,10 @@
 import { Hisse } from "@/services/collectApi";
 import { fetchChartData } from "@/utils/yahooFinance";
-import { analyzeDailySetup, analyzeStock, DailyTrendDirection } from "@/utils/indicators";
+import { analyzeDailySetup, DailyTrendDirection, macd } from "@/utils/indicators";
 
 export type TreydEtiketi = "GÜÇLÜ ALIM" | "MOMENTUM KIRILIMI" | "TAKİP LİSTESİ";
 
-const TOTAL_CONFIRMATIONS = 7;
+const TOTAL_CONFIRMATIONS = 6;
 const MOMENTUM_CONFIRMATIONS_REQUIRED = 5;
 
 export type TreydSinyali = {
@@ -112,13 +112,16 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
       };
     }
 
-    const analysis = analyzeStock(chart.closes, chart.highs, chart.lows, chart.volumes);
     const daily = analyzeDailySetup(chart.closes, chart.highs, chart.lows, chart.volumes);
     const lastCompletedIdx = chart.closes.length >= 2 ? chart.closes.length - 2 : chart.closes.length - 1;
-    const lastClose = chart.closes[lastCompletedIdx] ?? candidate.fiyat;
-    const previousClose = chart.closes[Math.max(0, lastCompletedIdx - 1)] ?? lastClose;
-    const priceMomentum = lastClose > previousClose;
-    const technicalBuy = analysis.signal === "buy";
+    const macdSeries = macd(chart.closes);
+    const macdHistogram = macdSeries.histogram[lastCompletedIdx] ?? NaN;
+    const previousMacdHistogram = macdSeries.histogram[Math.max(0, lastCompletedIdx - 1)] ?? NaN;
+    const macdConfirmed =
+      Number.isFinite(macdHistogram) &&
+      Number.isFinite(previousMacdHistogram) &&
+      macdHistogram > 0 &&
+      macdHistogram >= previousMacdHistogram;
     const trendConfirmed = daily.dailyTrend === "up";
     const confirmations = [
       trendConfirmed,
@@ -126,8 +129,7 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
       daily.volumeConfirmed,
       daily.rsiFavorable,
       daily.structureConfirmed,
-      technicalBuy,
-      priceMomentum,
+      macdConfirmed,
     ];
     const teyitSayisi = confirmations.filter(Boolean).length;
     const teyitler: string[] = [];
@@ -159,8 +161,7 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
       "Yüksek dip + yüksek tepe yapısı",
       daily.structureConfirmed,
     );
-    addSetupReason(teyitler, "Çoklu teknik gösterge alım yönünde", technicalBuy);
-    addSetupReason(teyitler, "Son tamamlanmış günlük kapanış pozitif", priceMomentum);
+    addSetupReason(teyitler, "MACD histogramı pozitif ve yükseliyor", macdConfirmed);
 
     const strongBuy =
       candidate.degisimYuzde >= 0.75 &&
@@ -169,10 +170,9 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
       daily.volumeConfirmed &&
       daily.rsiFavorable &&
       daily.structureConfirmed &&
-      technicalBuy &&
-      priceMomentum;
+      macdConfirmed;
     // Günlük yüzde yükselişi tek başına momentum kabul etmiyoruz.
-    // Momentum etiketi için en az 5/7 teyit ve kırılım/yapı şartı gerekir.
+    // Momentum etiketi için en az 5/6 teyit ve kırılım/yapı şartı gerekir.
     const momentumBreakout =
       daily.dailyTrend !== "down" &&
       teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED &&
