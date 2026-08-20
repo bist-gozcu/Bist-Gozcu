@@ -25,7 +25,7 @@ export interface ChartResult {
   volumes: number[];
 }
 
-export type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y";
+export type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "1y" | "5y";
 
 export interface MarketNews {
   title: string;
@@ -73,13 +73,14 @@ const YF_HEADERS = {
 };
 
 const RANGE_INTERVAL: Record<ChartRange, string> = {
-  "1d": "5m",
-  "5d": "1h",
-  "1mo": "1d",
+  // Uygulamadaki etiketler: 1G=15dk, 1H=1saat, 1A=4saat,
+  // 3A=1gün, 1Y=1hafta, 5Y=1ay.
+  "1d": "15m",
+  "5d": "60m",
+  "1mo": "1h",
   "3mo": "1d",
-  "6mo": "1d",
-  "1y": "1d",
-  "5y": "1wk",
+  "1y": "1wk",
+  "5y": "1mo",
 };
 
 const QUOTE_TIMEOUT_MS = 8_000;
@@ -236,6 +237,16 @@ async function fetchQuotesFromChart(symbols: string[]): Promise<QuoteData[]> {
 const PROXY_CHUNK_SIZE = 24;
 const PROXY_TIMEOUT_MS = 20_000;
 const PROXY_RETRIES = 2;
+
+const expectedIntervalSeconds: Record<string, number> = {
+  "5m": 5 * 60,
+  "15m": 15 * 60,
+  "60m": 60 * 60,
+  "1h": 60 * 60,
+  "1d": 24 * 60 * 60,
+  "1wk": 7 * 24 * 60 * 60,
+  "1mo": 30 * 24 * 60 * 60,
+};
 
 function normalizeProxyResults(payload: unknown): QuoteData[] {
   const root = payload as { quoteResponse?: { result?: Array<Record<string, unknown>> } };
@@ -432,6 +443,20 @@ function parseChartJson(json: unknown, sym: string): ChartResult | null {
   };
 }
 
+function chartIntervalMatches(data: ChartResult, expectedInterval: string): boolean {
+  const expected = expectedIntervalSeconds[expectedInterval];
+  if (!expected || data.timestamps.length < 4) return true;
+  const diffs = data.timestamps
+    .slice(1)
+    .map((timestamp, index) => timestamp - data.timestamps[index])
+    .filter((diff) => diff > 0)
+    .sort((a, b) => a - b);
+  if (diffs.length < 3) return true;
+  const median = diffs[Math.floor(diffs.length / 2)];
+  // Hafta sonu/tatil boşluklarını tolere ederken yanlış günlük/haftalık seriyi reddet.
+  return median >= expected * 0.45 && median <= expected * 2.2;
+}
+
 function aggregateCandles(data: ChartResult, groupSize: number): ChartResult {
   if (groupSize <= 1) return data;
   const timestamps: number[] = [];
@@ -468,7 +493,12 @@ export async function fetchChartData(
   const proxyBase = getProxyBase();
 
   const finish = (result: ChartResult | null): ChartResult | null => {
-    if (result && range === "1d" && intradayInterval === "10m") {
+    if (!result) return null;
+    if (range === "1mo" && yahooInterval === "1h") {
+      // 1 aylık görünümde 1 saatlik gerçek mumları 4 saatlik mumlara birleştir.
+      return aggregateCandles(result, 4);
+    }
+    if (range === "1d" && intradayInterval === "10m") {
       return aggregateCandles(result, 2);
     }
     return result;
@@ -481,7 +511,7 @@ export async function fetchChartData(
       if (res.ok) {
         const json = await res.json();
         const result = parseChartJson(json, symbol);
-        if (result) return finish(result);
+        if (result && chartIntervalMatches(result, yahooInterval)) return finish(result);
       }
     } catch {}
   }
@@ -492,7 +522,7 @@ export async function fetchChartData(
     if (res.ok) {
       const json = await res.json();
       const result = parseChartJson(json, symbol);
-      if (result) return finish(result);
+      if (result && chartIntervalMatches(result, yahooInterval)) return finish(result);
     }
   } catch {}
 
@@ -502,7 +532,8 @@ export async function fetchChartData(
     const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}.IS?interval=${yahooInterval}&range=${range}${crumbParam}`;
     const res = await fetchWithTimeout(url, { headers: YF_HEADERS });
     const json = await res.json();
-    return finish(parseChartJson(json, symbol));
+    const result = parseChartJson(json, symbol);
+    return result && chartIntervalMatches(result, yahooInterval) ? finish(result) : null;
   } catch {
     return null;
   }

@@ -103,19 +103,19 @@ router.get("/bist/quotes", async (req, res) => {
   }
 });
 
-type YfInterval = "5m" | "15m" | "60m" | "1h" | "1d" | "1wk" | "1mo";
+type YfInterval = "15m" | "60m" | "1h" | "1d" | "1wk" | "1mo";
 
 const RANGE_CONFIG: Record<string, { days: number; interval: YfInterval }> = {
-  "1d":  { days: 1,     interval: "5m"  },
-  "5d":  { days: 5,     interval: "1h"  },
-  "1mo": { days: 30,    interval: "1d"  },
+  "1d":  { days: 1,     interval: "15m" },
+  "5d":  { days: 5,     interval: "60m" },
+  "1mo": { days: 30,    interval: "1h"  },
   "3mo": { days: 90,    interval: "1d"  },
   "6mo": { days: 180,   interval: "1d"  },
-  "1y":  { days: 365,   interval: "1d"  },
-  "5y":  { days: 365*5, interval: "1wk" },
+  "1y":  { days: 365,   interval: "1wk" },
+  "5y":  { days: 365*5, interval: "1mo" },
 };
 
-const ALLOWED_INTRADAY_INTERVALS: YfInterval[] = ["5m", "15m", "60m"];
+const ALLOWED_CHART_INTERVALS: YfInterval[] = ["15m", "60m", "1h", "1d", "1wk", "1mo"];
 
 router.get("/bist/macro", async (req, res) => {
   try {
@@ -242,7 +242,7 @@ router.get("/bist/chart/:symbol", async (req, res) => {
 
     const requestedInterval = req.query.interval as string | undefined;
     const interval =
-      range === "1d" && requestedInterval && ALLOWED_INTRADAY_INTERVALS.includes(requestedInterval as YfInterval)
+      requestedInterval && ALLOWED_CHART_INTERVALS.includes(requestedInterval as YfInterval)
         ? (requestedInterval as YfInterval)
         : cfg.interval;
 

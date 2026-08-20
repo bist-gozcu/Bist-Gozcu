@@ -58,7 +58,6 @@ const RANGES: { key: ChartRange; label: string }[] = [
   { key: "5d",  label: "1H" },
   { key: "1mo", label: "1A" },
   { key: "3mo", label: "3A" },
-  { key: "6mo", label: "6A" },
   { key: "1y",  label: "1Y" },
   { key: "5y",  label: "5Y" },
 ];
@@ -275,6 +274,7 @@ export default function StockDetailScreen() {
     { label: "SMA 50", values: sma(chart.closes, 50), color: "#a3e635" },
     { label: "SMA 200", values: sma(chart.closes, 200), color: "#38bdf8" },
   ] : [];
+  const visibleChartOverlays = chartOverlays.filter((overlay) => overlay.values.some((value) => Number.isFinite(value)));
 
   const chartPrices = chart?.closes.filter((close) => close > 0) ?? [];
   const chartStartPrice = chartPrices[0];
@@ -476,6 +476,29 @@ export default function StockDetailScreen() {
           </View>
         </View>
 
+        {/* Chart controls: mode buttons stay above the compact range row */}
+        <View style={[styles.chartModeRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <Text style={[styles.chartModeLabel, { color: colors.mutedForeground }]}>Grafik görünümü</Text>
+          <View style={styles.chartModeActions}>
+            <Pressable
+              onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")}
+              style={[styles.chartTypeBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+              accessibilityRole="button"
+              accessibilityLabel={chartType === "candle" ? "Çizgi grafiğe geç" : "Mum grafiğe geç"}
+            >
+              {chartType === "candle" ? <IconLineChart color={colors.up} size={18} /> : <IconCandle color={colors.up} size={18} />}
+            </Pressable>
+            <Pressable
+              onPress={() => setShowFullscreenChart(true)}
+              style={[styles.chartExpandBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+              accessibilityRole="button"
+              accessibilityLabel="Grafiği tam ekran aç"
+            >
+              <IconExpand color={colors.foreground} size={18} />
+            </Pressable>
+          </View>
+        </View>
+
         {/* Range Selector */}
         <View style={[styles.rangeRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           {RANGES.map(({ key, label }) => (
@@ -495,22 +518,6 @@ export default function StockDetailScreen() {
               </Text>
             </Pressable>
           ))}
-          <Pressable
-            onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")}
-            style={[styles.chartTypeBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
-            accessibilityRole="button"
-            accessibilityLabel={chartType === "candle" ? "Çizgi grafiğe geç" : "Mum grafiğe geç"}
-          >
-            {chartType === "candle" ? <IconLineChart color={colors.up} size={18} /> : <IconCandle color={colors.up} size={18} />}
-          </Pressable>
-          <Pressable
-            onPress={() => setShowFullscreenChart(true)}
-            style={[styles.chartExpandBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
-            accessibilityRole="button"
-            accessibilityLabel="Grafiği tam ekran aç"
-          >
-            <IconExpand color={colors.foreground} size={18} />
-          </Pressable>
         </View>
 
         {/* Chart */}
@@ -528,10 +535,21 @@ export default function StockDetailScreen() {
             timestamps={chart.timestamps}
             range={range}
             chartType={chartType}
+            overlays={visibleChartOverlays}
           />
         ) : (
           <View style={styles.chartLoader}>
             <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Grafik verisi yok</Text>
+          </View>
+        )}
+        {visibleChartOverlays.length > 0 && (
+          <View style={styles.overlayLegend}>
+            {visibleChartOverlays.map((overlay) => (
+              <View key={`normal-${overlay.label}`} style={styles.overlayLegendItem}>
+                <View style={[styles.overlayDot, { backgroundColor: overlay.color }]} />
+                <Text style={[styles.overlayLegendText, { color: colors.mutedForeground }]}>{overlay.label}</Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -739,18 +757,26 @@ export default function StockDetailScreen() {
             </Pressable>
           </View>
 
+          <View style={[styles.fullscreenModeRow, { borderColor: colors.border, backgroundColor: colors.card }]}>
+            <Text style={[styles.chartModeLabel, { color: colors.mutedForeground }]}>Grafik görünümü</Text>
+            <View style={styles.chartModeActions}>
+              <Pressable onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")} style={styles.fullscreenTypeBtn}>
+                {chartType === "candle" ? <IconLineChart color={colors.up} size={20} /> : <IconCandle color={colors.up} size={20} />}
+              </Pressable>
+              <Pressable onPress={() => setShowFullscreenChart(false)} style={styles.fullscreenTypeBtn}>
+                <IconCollapse color={colors.foreground} size={20} />
+              </Pressable>
+            </View>
+          </View>
           <View style={[styles.fullscreenRangeRow, { borderColor: colors.border, backgroundColor: colors.card }]}>
             {RANGES.map(({ key, label }) => (
               <Pressable key={key} onPress={() => handleRangeChange(key)} style={[styles.fullscreenRangeBtn, range === key && { backgroundColor: colors.primary }]}>
                 <Text style={[styles.rangeBtnText, { color: range === key ? "#fff" : colors.mutedForeground }]}>{label}</Text>
               </Pressable>
             ))}
-            <Pressable onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")} style={styles.fullscreenTypeBtn}>
-              {chartType === "candle" ? <IconLineChart color={colors.up} size={20} /> : <IconCandle color={colors.up} size={20} />}
-            </Pressable>
           </View>
           <View style={styles.overlayLegend}>
-            {chartOverlays.map((overlay) => (
+            {visibleChartOverlays.map((overlay) => (
               <View key={overlay.label} style={styles.overlayLegendItem}>
                 <View style={[styles.overlayDot, { backgroundColor: overlay.color }]} />
                 <Text style={[styles.overlayLegendText, { color: colors.mutedForeground }]}>{overlay.label}</Text>
@@ -771,7 +797,7 @@ export default function StockDetailScreen() {
                 timestamps={chart.timestamps}
                 range={range}
                 chartType={chartType}
-                overlays={chartOverlays}
+                overlays={visibleChartOverlays}
                 height={420}
               />
             ) : (
@@ -916,15 +942,19 @@ const styles = StyleSheet.create({
   sessionRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   sessionDot: { width: 6, height: 6, borderRadius: 3 },
   sessionText: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  chartModeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  chartModeLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  chartModeActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   rangeRow: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-around",
+    alignItems: "center",
     paddingVertical: 8,
-    paddingHorizontal: 8,
-    gap: 4,
+    paddingHorizontal: 4,
+    gap: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  rangeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  rangeBtn: { flex: 1, alignItems: "center", paddingHorizontal: 4, paddingVertical: 6, borderRadius: 8 },
   rangeBtnActive: {},
   rangeBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   chartTypeBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
@@ -933,8 +963,9 @@ const styles = StyleSheet.create({
   fullscreenHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 12 },
   fullscreenTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
   fullscreenSubtitle: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  fullscreenRangeRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, padding: 6, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
-  fullscreenRangeBtn: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
+  fullscreenModeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  fullscreenRangeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-around", gap: 0, padding: 6, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  fullscreenRangeBtn: { flex: 1, alignItems: "center", paddingHorizontal: 4, paddingVertical: 7, borderRadius: 8 },
   fullscreenTypeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   overlayLegend: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 14, paddingTop: 10 },
   overlayLegendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
