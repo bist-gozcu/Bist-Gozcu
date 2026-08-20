@@ -270,6 +270,11 @@ export default function StockDetailScreen() {
   const latestAlma  = almaData?.[n - 1];
   const latestT3    = t3Data?.[n - 1];
   const latestAtr   = atrData?.[n - 1];
+  const chartOverlays = chart ? [
+    { label: "SMA 20", values: sma(chart.closes, 20), color: "#c084fc" },
+    { label: "SMA 50", values: sma(chart.closes, 50), color: "#a3e635" },
+    { label: "SMA 200", values: sma(chart.closes, 200), color: "#38bdf8" },
+  ] : [];
 
   const chartPrices = chart?.closes.filter((close) => close > 0) ?? [];
   const chartStartPrice = chartPrices[0];
@@ -744,6 +749,14 @@ export default function StockDetailScreen() {
               {chartType === "candle" ? <IconLineChart color={colors.up} size={20} /> : <IconCandle color={colors.up} size={20} />}
             </Pressable>
           </View>
+          <View style={styles.overlayLegend}>
+            {chartOverlays.map((overlay) => (
+              <View key={overlay.label} style={styles.overlayLegendItem}>
+                <View style={[styles.overlayDot, { backgroundColor: overlay.color }]} />
+                <Text style={[styles.overlayLegendText, { color: colors.mutedForeground }]}>{overlay.label}</Text>
+              </View>
+            ))}
+          </View>
 
           <View style={styles.fullscreenChartArea}>
             {loadingChart ? (
@@ -758,6 +771,7 @@ export default function StockDetailScreen() {
                 timestamps={chart.timestamps}
                 range={range}
                 chartType={chartType}
+                overlays={chartOverlays}
                 height={420}
               />
             ) : (
@@ -922,6 +936,10 @@ const styles = StyleSheet.create({
   fullscreenRangeRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, padding: 6, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
   fullscreenRangeBtn: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
   fullscreenTypeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  overlayLegend: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 14, paddingTop: 10 },
+  overlayLegendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  overlayDot: { width: 7, height: 7, borderRadius: 4 },
+  overlayLegendText: { fontSize: 10, fontFamily: "Inter_500Medium" },
   fullscreenChartArea: { flex: 1, alignItems: "center", justifyContent: "center", marginTop: 12 },
   fullscreenHint: { textAlign: "center", fontSize: 11, lineHeight: 16, paddingHorizontal: 12, paddingBottom: 4 },
   chartLoader: { height: 236, alignItems: "center", justifyContent: "center" },

@@ -13,6 +13,7 @@ import { useColors } from "@/hooks/useColors";
 import { ChartRange } from "@/utils/yahooFinance";
 
 export type ChartType = "line" | "candle";
+export type ChartOverlay = { label: string; values: number[]; color: string };
 
 interface PriceChartProps {
   closes: number[];
@@ -24,6 +25,7 @@ interface PriceChartProps {
   range: ChartRange;
   chartType?: ChartType;
   height?: number;
+  overlays?: ChartOverlay[];
 }
 
 const CHART_H = 200;
@@ -36,7 +38,7 @@ const SESSION_START_HOUR = 10;
 const SESSION_END_HOUR = 18;
 const SESSION_END_MINUTE = 10;
 
-type Point = { c: number; o: number; h: number; l: number; v: number; t: number; x: number; y: number };
+type Point = { idx: number; c: number; o: number; h: number; l: number; v: number; t: number; x: number; y: number };
 type LineSegment = { d: string; color: string };
 type Candle = { x: number; openY: number; closeY: number; highY: number; lowY: number; color: string; width: number };
 
@@ -77,6 +79,7 @@ export default function PriceChart({
   range,
   chartType = "line",
   height: chartHeight = 200,
+  overlays = [],
 }: PriceChartProps) {
   const colors = useColors();
   const { width } = useWindowDimensions();
@@ -94,13 +97,14 @@ export default function PriceChart({
     volBars,
     xLabels,
     yLabels,
+    overlayPaths,
   } = useMemo(() => {
     const valid = closes
       .map((c, i) => {
         const open = opens?.[i] != null && opens[i] > 0 ? opens[i] : c;
         const high = highs?.[i] != null && highs[i] > 0 ? highs[i] : Math.max(open, c);
         const low = lows?.[i] != null && lows[i] > 0 ? lows[i] : Math.min(open, c);
-        return { c, o: open, h: Math.max(high, open, c), l: Math.min(low, open, c), v: volumes[i] ?? 0, t: timestamps[i] ?? 0 };
+        return { idx: i, c, o: open, h: Math.max(high, open, c), l: Math.min(low, open, c), v: volumes[i] ?? 0, t: timestamps[i] ?? 0 };
       })
       .filter((d) => d.c > 0 && d.t > 0);
 
@@ -108,6 +112,7 @@ export default function PriceChart({
       return {
         pathFill: "",
         lineSegments: [] as LineSegment[],
+        overlayPaths: [] as { label: string; d: string; color: string }[],
         candles: [] as Candle[],
         baselineY: 0,
         baselineLabel: "Başlangıç",
@@ -147,6 +152,13 @@ export default function PriceChart({
       d: `M${pts[i].x.toFixed(1)},${pts[i].y.toFixed(1)} L${point.x.toFixed(1)},${point.y.toFixed(1)}`,
       color: point.c >= pts[i].c ? colors.up : colors.down,
     }));
+    const overlayPaths = overlays.map((overlay) => {
+      const overlayPoints = valid
+        .map((item, i) => ({ x: pts[i].x, value: overlay.values[item.idx] }))
+        .filter((item) => Number.isFinite(item.value));
+      const d = overlayPoints.map((point, i) => `${i === 0 ? "M" : "L"}${point.x.toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+      return { label: overlay.label, d, color: overlay.color };
+    }).filter((overlay) => overlay.d.length > 0);
     const candleWidth = Math.max(3, Math.min(10, (chartW / valid.length) * 0.68));
     const candles: Candle[] = pts.map((point, i) => ({
       x: point.x,
@@ -191,6 +203,7 @@ export default function PriceChart({
     return {
       pathFill,
       lineSegments,
+      overlayPaths,
       candles,
       baselineY: y(firstPrice),
       baselineLabel: `Başlangıç ${formatPrice(firstPrice)}`,
@@ -199,7 +212,7 @@ export default function PriceChart({
       xLabels,
       yLabels,
     };
-  }, [closes, opens, highs, lows, volumes, timestamps, range, chartType, chartHeight, chartW, priceH, volH, colors]);
+  }, [closes, opens, highs, lows, volumes, timestamps, range, chartType, chartHeight, chartW, priceH, volH, overlays, colors]);
 
   if (closes.filter((c) => c > 0).length < 2) {
     return (
@@ -249,6 +262,9 @@ export default function PriceChart({
             </React.Fragment>
           ))
         )}
+        {overlayPaths.map((overlay) => (
+          <Path key={`overlay-${overlay.label}`} d={overlay.d} stroke={overlay.color} strokeWidth={1.4} fill="none" opacity={0.9} />
+        ))}
         <Line x1={ML} y1={baselineY} x2={ML + chartW} y2={baselineY} stroke={baselineColor} strokeWidth={1} strokeDasharray="5,4" opacity={0.75} />
         <SvgText x={ML + 4} y={baselineY - 4} fontSize={8} fill={baselineColor}>{baselineLabel}</SvgText>
         {volBars.map((bar, i) => (
