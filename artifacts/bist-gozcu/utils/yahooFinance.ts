@@ -360,27 +360,48 @@ export async function fetchMacroQuotes(symbols: string[]): Promise<QuoteData[]> 
 }
 
 export async function fetchStockOverview(symbol: string): Promise<StockOverview | null> {
+  const normalizedSymbol = symbol.trim().toUpperCase().replace(/\.IS$/i, "");
   const proxyBase = getProxyBase();
+  const emptyFundamentals: StockFundamentals = {
+    trailingPE: null, forwardPE: null, priceToBook: null, priceToSales: null,
+    enterpriseToEbitda: null, bookValue: null, returnOnEquity: null,
+    profitMargins: null, revenueGrowth: null, earningsGrowth: null,
+    debtToEquity: null, dividendYield: null, targetMeanPrice: null,
+    recommendationMean: null, analystCount: null, asOf: null,
+  };
+
   try {
-    const url = `${proxyBase}/bist/stock/${encodeURIComponent(symbol.trim().toUpperCase())}/overview`;
+    const url = `${proxyBase}/bist/stock/${encodeURIComponent(normalizedSymbol)}/overview`;
     const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
-    if (!res.ok) return null;
-    const payload = await res.json() as Partial<StockOverview> & { quote?: Record<string, unknown> };
-    const normalizedQuote = payload.quote
-      ? normalizeProxyResults({ quoteResponse: { result: [payload.quote] } })[0]
-      : undefined;
+    if (res.ok) {
+      const payload = await res.json() as Partial<StockOverview> & { quote?: Record<string, unknown> };
+      const normalizedQuote = payload.quote
+        ? normalizeProxyResults({ quoteResponse: { result: [payload.quote] } })[0]
+        : undefined;
+      return {
+        symbol: String(payload.symbol ?? normalizedSymbol).replace(/\.IS$/i, "").toUpperCase(),
+        quote: normalizedQuote,
+        fundamentals: { ...emptyFundamentals, ...(payload.fundamentals ?? {}) },
+        news: Array.isArray(payload.news) ? payload.news : [],
+        source: String(payload.source ?? "BIST Gözcü proxy"),
+      };
+    }
+  } catch {
+    // Eski veya kota dolu proxy sürümlerinde aşağıdaki düşük maliyetli fallback denenir.
+  }
+
+  try {
+    const [fallbackQuote, fallbackNews] = await Promise.all([
+      fetchSingleQuote(normalizedSymbol),
+      fetchMarketNews(normalizedSymbol, 3),
+    ]);
+    if (!fallbackQuote && fallbackNews.length === 0) return null;
     return {
-      symbol: String(payload.symbol ?? symbol).replace(/\.IS$/i, "").toUpperCase(),
-      quote: normalizedQuote,
-      fundamentals: payload.fundamentals ?? {
-        trailingPE: null, forwardPE: null, priceToBook: null, priceToSales: null,
-        enterpriseToEbitda: null, bookValue: null, returnOnEquity: null,
-        profitMargins: null, revenueGrowth: null, earningsGrowth: null,
-        debtToEquity: null, dividendYield: null, targetMeanPrice: null,
-        recommendationMean: null, analystCount: null, asOf: null,
-      },
-      news: Array.isArray(payload.news) ? payload.news : [],
-      source: String(payload.source ?? "BIST Gözcü proxy"),
+      symbol: normalizedSymbol,
+      quote: fallbackQuote ?? undefined,
+      fundamentals: emptyFundamentals,
+      news: fallbackNews,
+      source: "Yahoo fiyat/haber fallback’i; temel oran verisi yok",
     };
   } catch {
     return null;

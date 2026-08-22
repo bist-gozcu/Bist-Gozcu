@@ -347,6 +347,13 @@ export default function StockDetailScreen() {
   const targetUpside = price != null && fundamentals?.targetMeanPrice != null && price > 0
     ? ((fundamentals.targetMeanPrice - price) / price) * 100
     : null;
+  const ratioParts = [
+    fundamentals?.trailingPE != null ? `F/K ${fundamentals.trailingPE.toFixed(2)}` : null,
+    fundamentals?.priceToBook != null ? `PD/DD ${fundamentals.priceToBook.toFixed(2)}` : null,
+    fundamentals?.returnOnEquity != null ? `ROE ${(fundamentals.returnOnEquity * 100).toFixed(1)}%` : null,
+    fundamentals?.debtToEquity != null ? `Borç/özsermaye ${fundamentals.debtToEquity.toFixed(1)}` : null,
+  ].filter((part): part is string => part != null);
+  const hasFundamentalData = ratioParts.length > 0 || fundamentals?.priceToSales != null || fundamentals?.enterpriseToEbitda != null;
   const valuationTitle = targetUpside != null
     ? targetUpside >= 15
       ? "Hedef fiyata göre iskontolu görünüyor"
@@ -357,11 +364,13 @@ export default function StockDetailScreen() {
       ? "PD/DD düşük; tek başına ucuzluk kanıtı değil"
       : fundamentals?.priceToBook != null && fundamentals.priceToBook > 3
         ? "PD/DD yüksek; primli değerleme riski var"
-        : "Göreli değerleme için veri bekleniyor";
+        : hasFundamentalData
+          ? "Temel oranlar mevcut; sektörle birlikte değerlendirilmeli"
+          : "Göreli değerleme için veri bekleniyor";
   const valuationText = targetUpside != null
-    ? `Analist ortalama hedefi ₺${fundamentals?.targetMeanPrice?.toFixed(2)}; mevcut fiyata göre ${targetUpside >= 0 ? "+" : ""}${targetUpside.toFixed(1)}% fark var. Bu hedef garanti değildir ve analist kapsamı ${fundamentals?.analystCount ?? "bilinmiyor"} kişi olabilir.`
-    : fundamentals?.priceToBook != null
-      ? `PD/DD ${fundamentals.priceToBook.toFixed(2)}. Ucuz/pahalı yorumu için sektör ortalaması, borçluluk ve kârlılık birlikte değerlendirilmelidir.`
+    ? `${ratioParts.length > 0 ? `${ratioParts.join(" · ")}. ` : ""}Analist ortalama hedefi ₺${fundamentals?.targetMeanPrice?.toFixed(2)}; mevcut fiyata göre ${targetUpside >= 0 ? "+" : ""}${targetUpside.toFixed(1)}% fark var. Bu hedef garanti değildir ve analist kapsamı ${fundamentals?.analystCount ?? "bilinmiyor"} kişi olabilir.`
+    : hasFundamentalData
+      ? `${ratioParts.join(" · ") || "Ek temel oranlar mevcut"}. Ucuz/pahalı yorumu için sektör medyanı, borçluluk, kârlılık ve finansal dönem birlikte değerlendirilmelidir.`
       : "Temel oranlar bu kaynakta bulunamadı; bu nedenle ucuz veya pahalı hükmü verilmiyor.";
 
   const sessionLabel =
@@ -658,6 +667,7 @@ export default function StockDetailScreen() {
               <StatRow label="Borç/Özsermaye" value={formatRatio(fundamentals?.debtToEquity)} />
             </View>
             <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>F/K ve PD/DD gibi oranlar kaynakta bulunamazsa “—” gösterilir; sektör karşılaştırması olmadan kesin ucuz/pahalı kararı verilmez.</Text>
+            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>Kaynak: {stockOverview?.source ?? "Overview verisi bekleniyor"}{fundamentals?.asOf ? ` · Finansal dönem: ${fundamentals.asOf}` : ""}</Text>
           </View>
           {tradingViewUrl && (
             <Pressable
@@ -696,7 +706,7 @@ export default function StockDetailScreen() {
                   <View style={[styles.newsDot, { backgroundColor: colors.primary }]} />
                   <View style={styles.newsCopy}>
                     <Text style={[styles.newsTitle, { color: colors.foreground }]} numberOfLines={3}>{item.title}</Text>
-                    <Text style={[styles.newsMeta, { color: colors.mutedForeground }]}>{item.publisher || "Kaynak belirtilmedi"}</Text>
+                    <Text style={[styles.newsMeta, { color: colors.mutedForeground }]}>{item.publisher || "Kaynak belirtilmedi"}{item.providerPublishTime > 0 ? ` · ${new Date(item.providerPublishTime * 1000).toLocaleDateString("tr-TR")}` : ""}</Text>
                   </View>
                 </Pressable>
               ))}

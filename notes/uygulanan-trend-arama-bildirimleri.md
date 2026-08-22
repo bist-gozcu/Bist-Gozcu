@@ -43,3 +43,18 @@ Commit ve GitHub push sonrasında Windows klasöründe `pnpm install` ve preview
 
 POSIX not sonu.
 
+
+## Temel analiz ve haber özeti güncellemesi
+
+- Hisse overview rotası başarıyla dönerse temel oranlar, finansal dönem ve kaynak bilgisi gösteriliyor.
+- Overview rotası 404, kota veya geçici ağ hatası verirse mobil istemci tekil fiyat ve sınırlı hisse haber fallback’i deniyor.
+- Temel oran fallback’te yoksa uygulama `—` gösteriyor ve ucuz/pahalı hükmü vermiyor.
+- Temel özet mevcut oranları F/K, PD/DD, ROE ve borç/özsermaye ile kısa Türkçe metne dönüştürüyor.
+- Hisse haberlerinde yayıncı ve yayın tarihi gösteriliyor.
+- TradingView bağlantısı ayrıntılı inceleme için korunuyor; TradingView sayfası otomatik kazınmıyor.
+
+## 23 Ağustos 2026 durumu
+
+- Android export, TypeScript ve diff kontrolleri yeni overview değişikliklerinden sonra da başarılı.
+- Bu değişiklikler native modül eklemediği için mevcut runtime 1.0.0 preview APK’sına OTA ile gönderilebilir.
+- Kalıcı proxy’de overview rotası ayrıca deploy edilmedikçe temel oranlar için fallback kartı kullanılır.
