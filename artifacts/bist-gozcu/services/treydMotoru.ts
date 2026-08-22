@@ -1,4 +1,5 @@
 import { Hisse } from "@/services/collectApi";
+import { BIST30_SET, BIST50_SET } from "@/constants/bistStocks";
 import { fetchChartData } from "@/utils/yahooFinance";
 import { analyzeDailySetup, DailyTrendDirection, macd } from "@/utils/indicators";
 
@@ -6,6 +7,8 @@ export type TreydEtiketi = "GÜÇLÜ ALIM" | "MOMENTUM KIRILIMI" | "TAKİP LİST
 
 const TOTAL_CONFIRMATIONS = 6;
 const MOMENTUM_CONFIRMATIONS_REQUIRED = 5;
+const CANDIDATE_POOL_SIZE = 12;
+const MIN_AVERAGE_TURNOVER_TL = 5_000_000;
 
 export type TreydSinyali = {
   sembol: string;
@@ -81,20 +84,31 @@ const getQuoteCandidate = (hisse: Hisse, medianVolume: number): TreydSinyali => 
 
 export const getTop6Treyd = (hisseler: Hisse[]): TreydSinyali[] => {
   const validStocks = hisseler.filter(
-    (hisse) =>
-      Number.isFinite(hisse.fiyat) &&
-      hisse.fiyat > 0 &&
-      Number.isFinite(hisse.degisimYuzde) &&
-      Number.isFinite(hisse.hacim) &&
-      hisse.degisimYuzde > 0,
+    (hisse) => {
+      const averageTurnover = (hisse.ortalamaHacim ?? 0) * hisse.fiyat;
+      return (
+        BIST50_SET.has(hisse.sembol) &&
+        Number.isFinite(hisse.fiyat) &&
+        hisse.fiyat > 0 &&
+        Number.isFinite(hisse.degisimYuzde) &&
+        Number.isFinite(hisse.hacim) &&
+        Number.isFinite(hisse.ortalamaHacim) &&
+        (hisse.ortalamaHacim ?? 0) > 0 &&
+        averageTurnover >= MIN_AVERAGE_TURNOVER_TL &&
+        hisse.degisimYuzde > 0
+      );
+    },
   );
   const medianVolume = calculateMedian(validStocks.map((hisse) => hisse.hacim));
   if (medianVolume <= 0 || validStocks.length === 0) return [];
 
   return validStocks
     .map((hisse) => getQuoteCandidate(hisse, medianVolume))
-    .sort((a, b) => b.skor - a.skor)
-    .slice(0, 6);
+    .sort((a, b) => {
+      const indexPriority = Number(BIST30_SET.has(b.sembol)) - Number(BIST30_SET.has(a.sembol));
+      return indexPriority || b.skor - a.skor;
+    })
+    .slice(0, CANDIDATE_POOL_SIZE);
 };
 
 const addSetupReason = (reasons: string[], label: string, confirmed: boolean): void => {
@@ -185,7 +199,7 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
 
     return {
       ...candidate,
-      skor: candidate.skor + teyitSayisi * 0.2 + (daily.resistanceBreakout ? 0.2 : 0),
+      skor: candidate.skor + teyitSayisi * 0.2 + (daily.resistanceBreakout ? 0.2 : 0) + (BIST30_SET.has(candidate.sembol) ? 0.15 : 0),
       etiket,
       trendTeyitli: trendConfirmed,
       gunlukTrend: daily.dailyTrend,
@@ -217,5 +231,11 @@ export const getTop6TreydWithConfirmation = async (
   if (candidates.length === 0) return [];
 
   const confirmed = await Promise.all(candidates.map(confirmCandidate));
-  return confirmed.sort((a, b) => b.skor - a.skor).slice(0, 6);
+  return confirmed
+    .filter((signal) => signal.teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED)
+    .sort((a, b) => {
+      const indexPriority = Number(BIST30_SET.has(b.sembol)) - Number(BIST30_SET.has(a.sembol));
+      return indexPriority || b.skor - a.skor;
+    })
+    .slice(0, 6);
 };

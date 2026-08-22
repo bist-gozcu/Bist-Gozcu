@@ -75,6 +75,12 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # Security overrides: audit-patched transitive versions.
+  hono: ^4.12.34
+  "@hono/node-server": ^1.19.15
+  body-parser: ^2.3.0
+  undici: ^6.27.0
+
   # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"

@@ -1,7 +1,9 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, AppStateStatus } from "react-native";
-import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+import { useFavorites } from "@/contexts/FavoritesContext";
+import { useWatchlist } from "@/contexts/WatchlistContext";
+import { UNIQUE_BIST_STOCKS } from "@/constants/bistStocks";
 import { fetchBatchQuotes, isBistOpen, QuoteData } from "@/utils/yahooFinance";
 
 export interface StockQuote extends QuoteData {
@@ -28,6 +30,16 @@ const CACHE_KEY = "bist_quotes_cache";
 const CACHE_TTL = 60 * 1000;
 
 export function StockProvider({ children }: { children: React.ReactNode }) {
+  const { favorites } = useFavorites();
+  const { watchlist } = useWatchlist();
+  const trackedSymbols = useMemo(
+    () => Array.from(new Set([
+      ...UNIQUE_BIST_STOCKS.map((stock) => stock.symbol),
+      ...favorites,
+      ...watchlist,
+    ])),
+    [favorites, watchlist],
+  );
   const [quotes, setQuotes] = useState<Record<string, StockQuote>>({});
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -51,7 +63,7 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setIsMarketOpen(isBistOpen());
     try {
-      const symbols = ALL_BIST_STOCKS.map((s) => s.symbol);
+      const symbols = trackedSymbols;
       // fetchBatchQuotes chart fallback’ini kontrollü eşzamanlılıkla çalıştırır.
       // Burada ayrıca chunk’lamak Android’de 32 eşzamanlı Yahoo isteği üretip
       // tüm fiyatların boş kalmasına neden olabiliyordu.
@@ -72,7 +84,7 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [loadCache]);
+  }, [loadCache, trackedSymbols]);
 
   useEffect(() => {
     loadCache().then(() => refresh());

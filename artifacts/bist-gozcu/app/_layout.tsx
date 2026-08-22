@@ -71,18 +71,18 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
-              <StockProvider>
-                <FavoritesProvider>
-                  <WatchlistProvider>
+              <FavoritesProvider>
+                <WatchlistProvider>
+                  <StockProvider>
                     <PortfolioProvider>
                       <AlertProvider>
                         <RootLayoutNav />
                         <DisclaimerModal />
                       </AlertProvider>
                     </PortfolioProvider>
-                  </WatchlistProvider>
-                </FavoritesProvider>
-              </StockProvider>
+                  </StockProvider>
+                </WatchlistProvider>
+              </FavoritesProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

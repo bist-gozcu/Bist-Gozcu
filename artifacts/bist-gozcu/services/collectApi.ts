@@ -1,7 +1,7 @@
 // Dosya: services/collectApi.ts
 
 import { Platform } from "react-native";
-import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+import { UNIQUE_BIST_STOCKS } from "@/constants/bistStocks";
 import { fetchBatchQuotes } from "@/utils/yahooFinance";
 
 export type Hisse = {
@@ -84,7 +84,7 @@ const validQuotes = (quotes: Hisse[]): Hisse[] =>
   quotes.filter((quote) => quote.sembol.length > 0 && quote.fiyat > 0);
 
 export const getBist100 = async (): Promise<Hisse[]> => {
-  const stockSymbols = ALL_BIST_STOCKS.map((stock) => stock.symbol);
+  const stockSymbols = UNIQUE_BIST_STOCKS.map((stock) => stock.symbol);
   const symbols = stockSymbols.join(",");
 
   try {

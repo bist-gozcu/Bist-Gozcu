@@ -420,6 +420,13 @@ export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> 
   return fetchQuotesFromChart(symbols);
 }
 
+export async function fetchSingleQuote(symbol: string): Promise<QuoteData | null> {
+  const normalized = symbol.replace(/\.IS$/i, "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{3,6}$/.test(normalized)) return null;
+  const quotes = await fetchBatchQuotes([normalized]);
+  return quotes.find((quote) => quote.symbol === normalized) ?? null;
+}
+
 function parseChartJson(json: unknown, sym: string): ChartResult | null {
   const chart = (json as Record<string, Record<string, Array<Record<string, unknown>>>>)
     ?.chart?.result?.[0];

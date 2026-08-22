@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Keyboard,
@@ -13,11 +13,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
-import { ALL_BIST_STOCKS, StockMeta } from "@/constants/bistStocks";
+import { UNIQUE_BIST_STOCKS, StockMeta } from "@/constants/bistStocks";
+import { fetchSingleQuote } from "@/utils/yahooFinance";
 import StockRow from "@/components/StockRow";
 import { IconSearch, IconX } from "@/components/TabIcon";
 
-const SECTORS = Array.from(new Set(ALL_BIST_STOCKS.map((s) => s.sector))).sort();
+const SECTORS = Array.from(new Set(UNIQUE_BIST_STOCKS.map((s) => s.sector))).sort();
 
 export default function SearchScreen() {
   const colors = useColors();
@@ -26,10 +27,13 @@ export default function SearchScreen() {
   const [query, setQuery] = useState("");
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
+  const [remoteResult, setRemoteResult] = useState<{ meta: StockMeta; quote: Awaited<ReturnType<typeof fetchSingleQuote>> } | null>(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState(false);
 
   const results = useMemo<StockMeta[]>(() => {
     const q = query.trim().toUpperCase();
-    return ALL_BIST_STOCKS.filter((s) => {
+    return UNIQUE_BIST_STOCKS.filter((s) => {
       const matchQuery =
         q === "" ||
         s.symbol.includes(q) ||
@@ -39,6 +43,43 @@ export default function SearchScreen() {
       return matchQuery && matchSector;
     });
   }, [query, selectedSector]);
+
+  useEffect(() => {
+    const q = query.trim().toUpperCase();
+    setRemoteResult(null);
+    setRemoteError(false);
+    if (selectedSector != null || q.length < 3 || results.length > 0) {
+      setRemoteLoading(false);
+      return;
+    }
+
+    let active = true;
+    setRemoteLoading(true);
+    const timer = setTimeout(() => {
+      void fetchSingleQuote(q).then((quote) => {
+        if (!active) return;
+        if (quote) {
+          setRemoteResult({
+            quote,
+            meta: { symbol: q, name: quote.shortName || q, sector: "Harici sembol" },
+          });
+        } else {
+          setRemoteError(true);
+        }
+      }).catch(() => {
+        if (active) setRemoteError(true);
+      }).finally(() => {
+        if (active) setRemoteLoading(false);
+      });
+    }, 450);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [query, selectedSector, results.length]);
+
+  const displayedResults = remoteResult ? [remoteResult.meta, ...results] : results;
 
   const handleFavoriteAdded = useCallback((symbol: string) => {
     if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -59,11 +100,11 @@ export default function SearchScreen() {
   const renderItem = useCallback(({ item }: { item: StockMeta }) => (
     <StockRow
       symbol={item.symbol}
-      quote={quotes[item.symbol]}
+      quote={item.symbol === remoteResult?.meta.symbol ? (remoteResult.quote ?? undefined) : quotes[item.symbol]}
       showFavoriteBtn
       onFavoriteAdded={handleFavoriteAdded}
     />
-  ), [quotes, handleFavoriteAdded]);
+  ), [quotes, remoteResult, handleFavoriteAdded]);
 
   const hasFilter = query.length > 0 || selectedSector != null;
 
@@ -134,7 +175,7 @@ export default function SearchScreen() {
       {/* Count + clear */}
       <View style={[styles.countBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
         <Text style={[styles.countText, { color: colors.mutedForeground }]}>
-          {results.length} hisse
+          {displayedResults.length} hisse
           {selectedSector ? ` · ${selectedSector}` : ""}
           {query.length > 0 ? ` · "${query}"` : ""}
         </Text>
@@ -147,7 +188,7 @@ export default function SearchScreen() {
 
       {/* Results */}
       <FlatList
-        data={results}
+        data={displayedResults}
         keyExtractor={(item) => item.symbol}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
@@ -155,11 +196,11 @@ export default function SearchScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>
-              Sonuç bulunamadı
+                <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>
+              {remoteLoading ? "Hisse doğrulanıyor…" : remoteError ? "Hisse bulunamadı" : "Sonuç bulunamadı"}
             </Text>
             <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-              "{query}" için eşleşme yok
+              {remoteLoading ? `"${query}" veri kaynağında kontrol ediliyor` : remoteError ? `"${query}" için doğrulanabilir piyasa verisi bulunamadı` : `"${query}" için eşleşme yok`}
             </Text>
           </View>
         }

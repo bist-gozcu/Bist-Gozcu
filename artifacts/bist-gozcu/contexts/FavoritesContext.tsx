@@ -4,6 +4,10 @@ import { createContext, useContext } from "react";
 import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
 
 const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((stock) => stock.symbol));
+const SYMBOL_PATTERN = /^[A-Z0-9]{3,6}$/;
+
+const isSupportedSymbol = (symbol: string): boolean =>
+  VALID_SYMBOLS.has(symbol) || SYMBOL_PATTERN.test(symbol);
 const STORAGE_KEY = "bist_favorites_v2";
 const LEGACY_STORAGE_KEY = "bist_favorites";
 
@@ -31,7 +35,7 @@ const normalize = (values: unknown): string[] => {
   return values
     .map((value) => String(value).trim().toUpperCase())
     .filter((symbol) => {
-      if (!VALID_SYMBOLS.has(symbol) || seen.has(symbol)) return false;
+      if (!isSupportedSymbol(symbol) || seen.has(symbol)) return false;
       seen.add(symbol);
       return true;
     });
@@ -89,7 +93,7 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
 
   const addFavorite = useCallback((symbol: string) => {
     const normalizedSymbol = symbol.trim().toUpperCase();
-    if (!VALID_SYMBOLS.has(normalizedSymbol) || favoritesRef.current.includes(normalizedSymbol)) return;
+    if (!isSupportedSymbol(normalizedSymbol) || favoritesRef.current.includes(normalizedSymbol)) return;
     persist([...favoritesRef.current, normalizedSymbol]);
   }, [persist]);
 

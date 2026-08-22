@@ -18,7 +18,7 @@ import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useStocks } from "@/contexts/StockContext";
 import { useWatchlist } from "@/contexts/WatchlistContext";
-import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+import { UNIQUE_BIST_STOCKS } from "@/constants/bistStocks";
 import StockRow from "@/components/StockRow";
 import {
   IconRefresh,
@@ -98,7 +98,7 @@ export default function MarketScreen() {
     removeFromWatchlist(symbol);
   }, [removeFromWatchlist]);
 
-  const availableStocks = ALL_BIST_STOCKS.filter((stock) => {
+  const availableStocks = UNIQUE_BIST_STOCKS.filter((stock) => {
     if (watchlist.includes(stock.symbol)) return false;
     const q = addQuery.trim().toUpperCase();
     return !q || stock.symbol.includes(q) || stock.name.toUpperCase().includes(q);

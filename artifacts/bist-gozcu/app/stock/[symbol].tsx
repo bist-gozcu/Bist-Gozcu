@@ -140,6 +140,9 @@ export default function StockDetailScreen() {
   const fav = favorites.includes(symbolText);
   const watched = watchlist.includes(symbolText);
   const session = getMarketSession();
+  const tradingViewUrl = symbolText
+    ? `https://www.tradingview.com/symbols/BIST-${encodeURIComponent(symbolText)}/financials-statistics-and-ratios/`
+    : "";
 
   useEffect(() => {
     if (!symbol) return;
@@ -656,6 +659,21 @@ export default function StockDetailScreen() {
             </View>
             <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>F/K ve PD/DD gibi oranlar kaynakta bulunamazsa “—” gösterilir; sektör karşılaştırması olmadan kesin ucuz/pahalı kararı verilmez.</Text>
           </View>
+          {tradingViewUrl && (
+            <Pressable
+              onPress={() => {
+                void Linking.openURL(tradingViewUrl).catch(() => {
+                  Alert.alert("Bağlantı açılamadı", "TradingView sayfası açılamadı. İnternet bağlantınızı kontrol edin.");
+                });
+              }}
+              style={({ pressed }) => [styles.externalLinkBtn, { backgroundColor: colors.secondary, borderColor: colors.border }, pressed && { opacity: 0.7 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`${symbolText} için TradingView finansal oranlarını aç`}
+            >
+              <Text style={[styles.externalLinkText, { color: colors.primary }]}>TradingView’da temel analizi aç</Text>
+              <Text style={[styles.externalLinkHint, { color: colors.mutedForeground }]}>Oranlar ve finansal tablolar TradingView’da görüntülenir.</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Hisse-specific morning report */}
@@ -1033,6 +1051,9 @@ const styles = StyleSheet.create({
   valuationText: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 8 },
   fundamentalGrid: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(127,127,127,0.2)", marginTop: 4, paddingTop: 4 },
   dataBasis: { fontSize: 10, lineHeight: 15, fontFamily: "Inter_400Regular", marginTop: 8 },
+  externalLinkBtn: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 10, marginTop: 10, gap: 3 },
+  externalLinkText: { fontSize: 12, fontFamily: "Inter_700Bold" },
+  externalLinkHint: { fontSize: 10, fontFamily: "Inter_400Regular" },
   stockNewsCard: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
   stockNewsRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 11 },
   newsDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },

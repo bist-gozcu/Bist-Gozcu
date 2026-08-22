@@ -3,6 +3,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ALL_BIST_STOCKS, BIST30 } from "@/constants/bistStocks";
 
 const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol.toUpperCase()));
+const SYMBOL_PATTERN = /^[A-Z0-9]{3,6}$/;
+
+const isSupportedSymbol = (symbol: string): boolean =>
+  VALID_SYMBOLS.has(symbol) || SYMBOL_PATTERN.test(symbol);
 
 const normalize = (values: unknown): string[] => {
   if (!Array.isArray(values)) return [];
@@ -10,7 +14,7 @@ const normalize = (values: unknown): string[] => {
   return values
     .map((value) => String(value).trim().toUpperCase())
     .filter((symbol) => {
-      if (!VALID_SYMBOLS.has(symbol) || seen.has(symbol)) return false;
+      if (!isSupportedSymbol(symbol) || seen.has(symbol)) return false;
       seen.add(symbol);
       return true;
     });
@@ -65,7 +69,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
 
   const addToWatchlist = useCallback((symbol: string) => {
     const normalizedSymbol = symbol.trim().toUpperCase();
-    if (!VALID_SYMBOLS.has(normalizedSymbol) || watchlistRef.current.includes(normalizedSymbol)) return;
+    if (!isSupportedSymbol(normalizedSymbol) || watchlistRef.current.includes(normalizedSymbol)) return;
     save([...watchlistRef.current, normalizedSymbol]);
   }, [save]);
 

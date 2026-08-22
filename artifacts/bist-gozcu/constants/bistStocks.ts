@@ -5,38 +5,62 @@ export interface StockMeta {
 }
 
 export const BIST30: StockMeta[] = [
+  { symbol: "AEFES", name: "Anadolu Efes Biracılık", sector: "İçecek" },
   { symbol: "AKBNK", name: "Akbank T.A.Ş.", sector: "Bankacılık" },
-  { symbol: "ARCLK", name: "Arçelik A.Ş.", sector: "Beyaz Eşya" },
   { symbol: "ASELS", name: "Aselsan A.Ş.", sector: "Savunma" },
+  { symbol: "ASTOR", name: "Astor Enerji", sector: "Enerji" },
   { symbol: "BIMAS", name: "BİM Birleşik Mağazalar", sector: "Perakende" },
+  { symbol: "DSTKF", name: "Destek Finans Faktoring", sector: "Finans" },
   { symbol: "EKGYO", name: "Emlak Konut GYO", sector: "Gayrimenkul" },
+  { symbol: "ENKAI", name: "Enka İnşaat", sector: "İnşaat" },
   { symbol: "EREGL", name: "Ereğli Demir Çelik", sector: "Metal" },
   { symbol: "FROTO", name: "Ford Otomotiv Sanayi", sector: "Otomotiv" },
   { symbol: "GARAN", name: "Garanti BBVA", sector: "Bankacılık" },
-  { symbol: "HALKB", name: "T. Halk Bankası", sector: "Bankacılık" },
+  { symbol: "GUBRF", name: "Gübre Fabrikaları", sector: "Kimya" },
   { symbol: "ISCTR", name: "T. İş Bankası (C)", sector: "Bankacılık" },
   { symbol: "KCHOL", name: "Koç Holding", sector: "Holding" },
   { symbol: "KRDMD", name: "Kardemir (D)", sector: "Metal" },
   { symbol: "MGROS", name: "Migros Ticaret", sector: "Perakende" },
-  { symbol: "ODAS", name: "Odaş Elektrik", sector: "Enerji" },
   { symbol: "PETKM", name: "Petkim Petrokimya", sector: "Kimya" },
   { symbol: "PGSUS", name: "Pegasus Hava Taşımacılığı", sector: "Havacılık" },
   { symbol: "SAHOL", name: "Sabancı Holding", sector: "Holding" },
   { symbol: "SASA", name: "SASA Polyester Sanayi", sector: "Kimya" },
   { symbol: "SISE", name: "Türkiye Şişe ve Cam", sector: "Cam" },
-  { symbol: "SOKM", name: "Şok Marketler Ticaret", sector: "Perakende" },
   { symbol: "TAVHL", name: "TAV Havalimanları", sector: "Havacılık" },
   { symbol: "TCELL", name: "Turkcell İletişim", sector: "Telekomünikasyon" },
   { symbol: "THYAO", name: "Türk Hava Yolları", sector: "Havacılık" },
-  { symbol: "TKFEN", name: "Tekfen Holding", sector: "Holding" },
   { symbol: "TOASO", name: "Tofaş Türk Otomobil Fab.", sector: "Otomotiv" },
+  { symbol: "TRALT", name: "TRALT", sector: "Diğer" },
+  { symbol: "TTKOM", name: "Türk Telekom", sector: "Telekomünikasyon" },
   { symbol: "TUPRS", name: "Tüpraş", sector: "Enerji" },
   { symbol: "VAKBN", name: "T. Vakıflar Bankası", sector: "Bankacılık" },
   { symbol: "YKBNK", name: "Yapı Kredi Bankası", sector: "Bankacılık" },
 ];
 
+export const BIST30_SYMBOLS = BIST30.map((stock) => stock.symbol) as readonly string[];
+
+// 21 Ağustos 2026 kapanışıyla alınan BIST 50 snapshot’ı; endeks üyeliği dönemsel olarak değişebilir.
+export const BIST50_SYMBOLS = [
+  "AEFES", "AKBNK", "AKSEN", "ALARK", "ASELS", "ASTOR", "BIMAS", "BRSAN", "BTCIM", "CANTE",
+  "CCOLA", "CIMSA", "DSTKF", "ECILC", "EFOR", "EKGYO", "ENKAI", "EREGL", "FROTO", "GARAN",
+  "GLRMK", "GUBRF", "HALKB", "HEKTS", "ISCTR", "KCHOL", "KRDMD", "KTLEV", "KUYAS", "MGROS",
+  "MIATK", "OYAKC", "PASEU", "PETKM", "PGSUS", "SAHOL", "SASA", "SISE", "TAVHL", "TCELL",
+  "THYAO", "TOASO", "TRALT", "TRMET", "TTKOM", "TUPRS", "TURSG", "ULKER", "VAKBN", "YKBNK",
+] as const;
+
+export const BIST30_SET = new Set(BIST30_SYMBOLS);
+export const BIST50_SET = new Set<string>(BIST50_SYMBOLS);
+
 export const ALL_BIST_STOCKS: StockMeta[] = [
   ...BIST30,
+  { symbol: "BTCIM", name: "BTCIM", sector: "Çimento" },
+  { symbol: "ECILC", name: "ECILC", sector: "Sağlık" },
+  { symbol: "EFOR", name: "EFOR", sector: "Gıda" },
+  { symbol: "GLRMK", name: "GLRMK", sector: "İnşaat" },
+  { symbol: "HALKB", name: "Halkbank", sector: "Bankacılık" },
+  { symbol: "KTLEV", name: "KTLEV", sector: "Finans" },
+  { symbol: "KUYAS", name: "KUYAS", sector: "Diğer" },
+  { symbol: "TRMET", name: "TRMET", sector: "Diğer" },
   { symbol: "AEFES", name: "Anadolu Efes Biracılık", sector: "İçecek" },
   { symbol: "AGHOL", name: "AG Anadolu Grubu", sector: "Holding" },
   { symbol: "AKCNS", name: "Akçansa Çimento", sector: "Çimento" },
@@ -108,6 +132,10 @@ export const ALL_BIST_STOCKS: StockMeta[] = [
   { symbol: "ZRGYO", name: "Ziraat GYO", sector: "Gayrimenkul" },
 ];
 
+export const UNIQUE_BIST_STOCKS: StockMeta[] = Array.from(
+  new Map(ALL_BIST_STOCKS.map((stock) => [stock.symbol, stock])).values(),
+);
+
 export function getStockMeta(symbol: string): StockMeta | undefined {
-  return ALL_BIST_STOCKS.find((s) => s.symbol === symbol);
+  return UNIQUE_BIST_STOCKS.find((s) => s.symbol === symbol.trim().toUpperCase());
 }

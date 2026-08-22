@@ -17,6 +17,7 @@ import {
   TreydSinyali,
 } from "@/services/treydMotoru";
 import { isPiyasaAcik } from "@/utils/seansKontrol";
+import { fireRadarNotifications } from "@/contexts/AlertContext";
 
 export default function TreydScreen() {
   const colors = useColors();
@@ -37,6 +38,13 @@ export default function TreydScreen() {
       const confirmedResults = await getTop6TreydWithConfirmation(data);
       setResults(confirmedResults);
       setHasScanned(true);
+      void fireRadarNotifications(confirmedResults.map((item) => ({
+        symbol: item.sembol,
+        price: item.fiyat,
+        changePercent: item.degisimYuzde,
+        teyitSayisi: item.teyitSayisi,
+        teyitler: item.teyitler,
+      })));
     } finally {
       setIsScanning(false);
     }
@@ -73,8 +81,8 @@ export default function TreydScreen() {
         ]}
       >
         <View>
-          <Text style={[styles.title, { color: colors.foreground }]}>Treyd</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Çoklu teyitli momentum taraması</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>TREND</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>BIST 30/50 içinde çoklu teyitli trend taraması</Text>
         </View>
         <Pressable
           onPress={() => {
@@ -101,7 +109,7 @@ export default function TreydScreen() {
       </View>
 
       <View style={[styles.notice, { backgroundColor: `${colors.neutral}12`, borderColor: `${colors.neutral}30` }]}>
-        <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Günlük yükseliş yalnızca ön elemedir. Momentum etiketi için en az 5/6, güçlü alım için 6/6 teyit gerekir; bu ekran kesin sonuç veya yatırım tavsiyesi değildir.</Text>
+        <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>Radar yalnızca BIST 30/50 içindeki yeterli likiditeye sahip hisseleri gösterir. Ana radar için en az 5/6, güçlü teyit için 6/6 gerekir; günlük yükseliş tek başına sinyal değildir.</Text>
       </View>
 
       <FlatList
@@ -113,7 +121,7 @@ export default function TreydScreen() {
         onRefresh={() => void refreshAndScan()}
         ListHeaderComponent={
           <View style={styles.intro}>
-            <Text style={[styles.introTitle, { color: colors.foreground }]}>Radar’a Girenler</Text>
+            <Text style={[styles.introTitle, { color: colors.foreground }]}>Trend Radarı</Text>
           </View>
         }
         renderItem={({ item, index }) => (
@@ -153,7 +161,7 @@ export default function TreydScreen() {
             ) : (
               <>
                 <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{error ? "Veri alınamadı" : hasScanned ? "Radar sonucu bulunamadı" : "Radar taraması hazırlanıyor"}</Text>
-                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{error ? "Bağlantıyı kontrol edip aşağı çekerek yeniden deneyin." : "Veriler hazır olduğunda teyitli adaylar burada görünür."}</Text>
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{error ? "Bağlantıyı kontrol edip aşağı çekerek yeniden deneyin." : "Yeterli likidite ve en az 5/6 teyit alan adaylar burada görünür."}</Text>
               </>
             )}
           </View>

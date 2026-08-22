@@ -41,6 +41,62 @@ async function fireLocalNotification(alert: PriceAlert, price: number) {
   });
 }
 
+export interface RadarNotificationCandidate {
+  symbol: string;
+  price: number;
+  changePercent: number;
+  teyitSayisi: number;
+  teyitler: string[];
+}
+
+const RADAR_NOTIFICATION_KEY = "bist_trend_radar_notifications_v1";
+
+const localDateKey = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+export async function fireRadarNotifications(candidates: RadarNotificationCandidate[]): Promise<void> {
+  if (Platform.OS === "web" || candidates.length === 0) return;
+  const granted = await ensureNotificationPermission();
+  if (!granted) return;
+
+  let sentState: Record<string, { date: string; stage: number }> = {};
+  try {
+    const raw = await AsyncStorage.getItem(RADAR_NOTIFICATION_KEY);
+    if (raw) sentState = JSON.parse(raw) as Record<string, { date: string; stage: number }>;
+  } catch {
+    sentState = {};
+  }
+
+  const today = localDateKey();
+  for (const candidate of candidates) {
+    const stage = candidate.teyitSayisi >= 6 ? 6 : 5;
+    const previous = sentState[candidate.symbol];
+    if (previous?.date === today && previous.stage >= stage) continue;
+
+    const reasons = candidate.teyitler
+      .filter((reason) => reason.startsWith("✓"))
+      .map((reason) => reason.replace(/^✓\s*/, ""))
+      .slice(0, 2)
+      .join(" · ");
+    const change = `${candidate.changePercent >= 0 ? "+" : ""}${candidate.changePercent.toFixed(2)}%`;
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: stage === 6 ? "Güçlü Trend teyidi" : "Yeni Trend Radarı sinyali",
+        body: `${candidate.symbol} ${change} · ${candidate.teyitSayisi}/6 teyit${reasons ? ` · ${reasons}` : ""}. İnceleme sinyalidir.`,
+        sound: Platform.OS === "ios" ? "default" : undefined,
+        data: { symbol: candidate.symbol, type: "trend-radar" },
+      },
+      trigger: null,
+    });
+    sentState[candidate.symbol] = { date: today, stage };
+  }
+
+  const entries = Object.entries(sentState).slice(-100);
+  await AsyncStorage.setItem(RADAR_NOTIFICATION_KEY, JSON.stringify(Object.fromEntries(entries)));
+}
+
 export type AlertType = "above" | "below" | "tp" | "sl";
 
 export interface PriceAlert {

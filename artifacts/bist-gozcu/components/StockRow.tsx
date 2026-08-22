@@ -161,7 +161,7 @@ export default function StockRow({
             numberOfLines={1}
             ellipsizeMode="tail"
           >
-            {meta?.name ?? symbol}
+            {meta?.name ?? quote?.shortName ?? symbol}
           </Text>
         </View>
 
