@@ -154,6 +154,26 @@ export default function TreydScreen() {
             </View>
           </View>
         )}
+        ListFooterComponent={results.length > 0 ? (
+          <View style={[styles.dailyTradeSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.dailyTradeTitle, { color: colors.foreground }]}>Günlük Trade Adayları</Text>
+            <View style={styles.dailyTradeNames}>
+              {results.map((item) => (
+                <Pressable
+                  key={`daily-${item.sembol}`}
+                  onPress={() => router.push({ pathname: "/stock/[symbol]", params: { symbol: item.sembol } })}
+                  style={({ pressed }) => [
+                    styles.dailyTradeName,
+                    { backgroundColor: colors.secondary },
+                    pressed && styles.dailyTradeNamePressed,
+                  ]}
+                >
+                  <Text style={[styles.dailyTradeNameText, { color: colors.primary }]}>{item.sembol}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
         ListEmptyComponent={
           <View style={[styles.empty, { borderColor: colors.border }]}>
             {isLoading || isFetching || isScanning ? (
@@ -193,4 +213,10 @@ const styles = StyleSheet.create({
   empty: { minHeight: 150, borderWidth: 1, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 7, padding: 20 },
   emptyTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   emptyText: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center" },
+  dailyTradeSection: { marginTop: 12, marginBottom: 8, padding: 12, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  dailyTradeTitle: { fontSize: 15, fontFamily: "Inter_700Bold", marginBottom: 10 },
+  dailyTradeNames: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  dailyTradeName: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  dailyTradeNamePressed: { opacity: 0.65 },
+  dailyTradeNameText: { fontSize: 12, fontFamily: "Inter_700Bold" },
 });
