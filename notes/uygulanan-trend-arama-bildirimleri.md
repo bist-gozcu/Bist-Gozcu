@@ -58,3 +58,13 @@ POSIX not sonu.
 - Android export, TypeScript ve diff kontrolleri yeni overview değişikliklerinden sonra da başarılı.
 - Bu değişiklikler native modül eklemediği için mevcut runtime 1.0.0 preview APK’sına OTA ile gönderilebilir.
 - Kalıcı proxy’de overview rotası ayrıca deploy edilmedikçe temel oranlar için fallback kartı kullanılır.
+
+## Piyasa ekranı kripto takibi güncellemesi
+
+- Piyasa ekranındaki genel Borsa İstanbul haberleri bölümü kaldırıldı.
+- Yerine Bitcoin/USD ve Ethereum/USD fiyat kartları eklendi.
+- Kripto fiyatları için BTCUSDT ve ETHUSDT 24 saatlik değişim verisi kullanılıyor.
+- Yahoo/proxy erişimi kota veya ağ nedeniyle başarısız olursa Binance, ardından CoinGecko fallback’i deneniyor.
+- API proxy’de `-` içeren global sembollere yanlışlıkla `.IS` eklenmesi önlendi.
+- Kripto kartları mevcut makro yenileme döngüsünü kullanıyor; manuel yenileme de korunuyor.
+- Yüzde değerleri kişisel kâr/zarar değil, ilgili kripto varlığın 24 saatlik piyasa değişimidir.

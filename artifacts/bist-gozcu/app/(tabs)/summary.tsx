@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Linking, RefreshControl, ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { fetchMacroQuotes, fetchMarketNews, MarketNews, QuoteData } from "@/utils/yahooFinance";
+import { fetchCryptoQuotes, fetchMacroQuotes, QuoteData } from "@/utils/yahooFinance";
 import { IconRefresh } from "@/components/TabIcon";
 
 type MacroAsset = {
@@ -26,6 +26,11 @@ const MACRO_ASSETS: MacroAsset[] = [
   { key: "XU030.IS", label: "BIST 30", unit: "", decimals: 2, sourceSymbol: "XU030.IS" },
   { key: "XU050.IS", label: "BIST 50", unit: "", decimals: 2, sourceSymbol: "XU050.IS" },
   { key: "XU100.IS", label: "BIST 100", unit: "", decimals: 2, sourceSymbol: "XU100.IS" },
+];
+
+const CRYPTO_ASSETS: MacroAsset[] = [
+  { key: "BTC-USD", label: "Bitcoin / USD", unit: "$", decimals: 2, sourceSymbol: "BTC-USD" },
+  { key: "ETH-USD", label: "Ethereum / USD", unit: "$", decimals: 2, sourceSymbol: "ETH-USD" },
 ];
 
 const normalizeSymbol = (symbol: string) => symbol.replace(/\.IS$/i, "").toUpperCase();
@@ -64,24 +69,22 @@ export default function SummaryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [quotes, setQuotes] = useState<Record<string, QuoteData>>({});
-  const [news, setNews] = useState<MarketNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
-    const [macro, latestNews] = await Promise.all([
+    const [macro, crypto] = await Promise.all([
       fetchMacroQuotes(MACRO_SOURCE_SYMBOLS),
-      fetchMarketNews("Borsa Istanbul", 8),
+      fetchCryptoQuotes(),
     ]);
     const next: Record<string, QuoteData> = {};
-    macro.forEach((quote) => { next[normalizeSymbol(quote.symbol)] = quote; });
+    [...macro, ...crypto].forEach((quote) => { next[normalizeSymbol(quote.symbol)] = quote; });
     const goldGram = deriveTryPerGram(next["GC=F"], next["USDTRY=X"], "GRAM_ALTIN_TRY", "Gram Altın / TL");
     const silverGram = deriveTryPerGram(next["SI=F"], next["USDTRY=X"], "GRAM_GUMUS_TRY", "Gümüş / gram TL");
     if (goldGram) next[goldGram.symbol] = goldGram;
     if (silverGram) next[silverGram.symbol] = silverGram;
     setQuotes(next);
-    setNews(latestNews);
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
@@ -141,26 +144,27 @@ export default function SummaryScreen() {
 
         <View style={styles.newsHeader}>
           <View>
-            <Text style={[styles.sectionTitle, { color: colors.foreground, paddingHorizontal: 0, marginBottom: 2 }]}>Borsa Istanbul haberleri</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Kaynakta gerçek haber yoksa kart gösterilmez.</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground, paddingHorizontal: 0, marginBottom: 2 }]}>Kripto Para Takibi</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Bitcoin ve Ethereum · 24 saat açık piyasa</Text>
           </View>
           {lastUpdated && <Text style={[styles.updated, { color: colors.mutedForeground }]}>{lastUpdated.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</Text>}
         </View>
-        {news.length === 0 ? (
-          <Text style={[styles.empty, { color: colors.mutedForeground }]}>{loading ? "Haberler yükleniyor…" : "Bu sorgu için doğrulanmış haber bulunamadı."}</Text>
-        ) : (
-          <View style={[styles.newsCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
-            {news.map((item, index) => (
-              <Pressable key={`${item.title}-${index}`} disabled={!item.link} onPress={() => item.link && Linking.openURL(item.link)} style={[styles.newsRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}> 
-                <View style={[styles.newsDot, { backgroundColor: colors.primary }]} />
-                <View style={styles.newsCopy}>
-                  <Text style={[styles.newsTitle, { color: colors.foreground }]} numberOfLines={3}>{item.title}</Text>
-                  <Text style={[styles.newsMeta, { color: colors.mutedForeground }]}>{item.publisher || "Kaynak belirtilmedi"}</Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        )}
+        <View style={styles.grid}>
+          {CRYPTO_ASSETS.map((asset) => {
+            const quote = quotes[normalizeSymbol(asset.sourceSymbol ?? asset.key)];
+            const change = quote?.regularMarketChangePercent;
+            const changeColor = change == null ? colors.mutedForeground : change >= 0 ? colors.up : colors.down;
+            return (
+              <View key={asset.key} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.cardLabel, { color: colors.mutedForeground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>{asset.label}</Text>
+                <Text style={[styles.cardValue, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{formatValue(asset, quote)}</Text>
+                <Text style={[styles.cardChange, { color: changeColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  {change == null ? (loading ? "Yükleniyor" : "Veri yok") : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
       </ScrollView>
     </View>
   );
@@ -180,11 +184,5 @@ const styles = StyleSheet.create({
   cardChange: { fontSize: 12, lineHeight: 16, fontFamily: "Inter_600SemiBold", marginTop: 5 },
   newsHeader: { paddingHorizontal: 16, marginTop: 22, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   updated: { fontSize: 10, fontFamily: "Inter_400Regular" },
-  empty: { paddingHorizontal: 16, paddingVertical: 18, fontSize: 12, fontFamily: "Inter_400Regular" },
-  newsCard: { marginHorizontal: 12, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
-  newsRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 11 },
-  newsDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
-  newsCopy: { flex: 1 },
-  newsTitle: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_600SemiBold" },
-  newsMeta: { fontSize: 10, marginTop: 4, fontFamily: "Inter_400Regular" },
+
 });

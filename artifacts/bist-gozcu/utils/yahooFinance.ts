@@ -359,6 +359,89 @@ export async function fetchMacroQuotes(symbols: string[]): Promise<QuoteData[]> 
   return fetchMacroQuotesDirect(symbols);
 }
 
+const CRYPTO_PAIRS: Record<string, { symbol: string; shortName: string }> = {
+  BTCUSDT: { symbol: "BTC-USD", shortName: "Bitcoin / USD" },
+  ETHUSDT: { symbol: "ETH-USD", shortName: "Ethereum / USD" },
+};
+
+function toCryptoQuote(
+  pair: { symbol: string; shortName: string },
+  lastPrice: number,
+  change: number,
+  changePercent: number,
+  previousClose: number,
+  volume: number,
+  high: number,
+  low: number,
+): QuoteData {
+  return {
+    symbol: pair.symbol,
+    shortName: pair.shortName,
+    regularMarketPrice: lastPrice,
+    regularMarketChangePercent: changePercent,
+    regularMarketChange: change,
+    regularMarketVolume: volume,
+    regularMarketPreviousClose: previousClose,
+    regularMarketOpen: previousClose,
+    regularMarketDayHigh: high,
+    regularMarketDayLow: low,
+    fiftyTwoWeekHigh: 0,
+    fiftyTwoWeekLow: 0,
+    marketCap: 0,
+    averageDailyVolume3Month: volume,
+  };
+}
+
+export async function fetchCryptoQuotes(): Promise<QuoteData[]> {
+  try {
+    const url = "https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22%5D";
+    const res = await fetchWithTimeout(url, undefined, 10_000);
+    if (res.ok) {
+      const payload = await res.json() as Array<Record<string, unknown>>;
+      const quotes = payload.flatMap((item) => {
+        const pair = CRYPTO_PAIRS[String(item.symbol ?? "").toUpperCase()];
+        const lastPrice = Number(item.lastPrice);
+        const change = Number(item.priceChange);
+        const changePercent = Number(item.priceChangePercent);
+        const previousClose = Number(item.prevClosePrice);
+        if (!pair || !Number.isFinite(lastPrice) || lastPrice <= 0 || !Number.isFinite(previousClose) || previousClose <= 0) return [];
+        return [toCryptoQuote(
+          pair,
+          lastPrice,
+          Number.isFinite(change) ? change : lastPrice - previousClose,
+          Number.isFinite(changePercent) ? changePercent : ((lastPrice - previousClose) / previousClose) * 100,
+          previousClose,
+          Number.isFinite(Number(item.volume)) ? Number(item.volume) : 0,
+          Number(item.highPrice) || lastPrice,
+          Number(item.lowPrice) || lastPrice,
+        )];
+      });
+      if (quotes.length > 0) return quotes;
+    }
+  } catch {
+    // Binance erişimi yoksa CoinGecko yedek kaynağı denenir.
+  }
+
+  try {
+    const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true";
+    const res = await fetchWithTimeout(url, undefined, 10_000);
+    if (!res.ok) return [];
+    const payload = await res.json() as Record<string, { usd?: number; usd_24h_change?: number }>;
+    return ([
+      ["bitcoin", { symbol: "BTC-USD", shortName: "Bitcoin / USD" }],
+      ["ethereum", { symbol: "ETH-USD", shortName: "Ethereum / USD" }],
+    ] as const).flatMap(([id, pair]) => {
+      const lastPrice = Number(payload[id]?.usd);
+      const changePercent = Number(payload[id]?.usd_24h_change);
+      if (!Number.isFinite(lastPrice) || lastPrice <= 0) return [];
+      const previousClose = Number.isFinite(changePercent) ? lastPrice / (1 + changePercent / 100) : lastPrice;
+      return [toCryptoQuote(pair, lastPrice, lastPrice - previousClose, Number.isFinite(changePercent) ? changePercent : 0, previousClose, 0, lastPrice, lastPrice)];
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchStockOverview(symbol: string): Promise<StockOverview | null> {
   const normalizedSymbol = symbol.trim().toUpperCase().replace(/\.IS$/i, "");
   const proxyBase = getProxyBase();

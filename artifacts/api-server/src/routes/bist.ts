@@ -27,9 +27,8 @@ const numberOrZero = (value: unknown): number =>
 async function chartFallbackQuote(symbol: string): Promise<ChartQuote | null> {
   try {
     const normalizedSymbol = symbol.replace(/^\^/, "^").toUpperCase();
-    const yahooSymbol = normalizedSymbol.includes("=") || normalizedSymbol.startsWith("^") || normalizedSymbol.endsWith(".IS")
-      ? normalizedSymbol
-      : `${normalizedSymbol}.IS`;
+    const isGlobalMarketSymbol = normalizedSymbol.includes("=") || normalizedSymbol.startsWith("^") || normalizedSymbol.endsWith(".IS") || normalizedSymbol.includes("-");
+    const yahooSymbol = isGlobalMarketSymbol ? normalizedSymbol : `${normalizedSymbol}.IS`;
     const result = await yf.chart(yahooSymbol, {
       period1: new Date(Date.now() - 90 * 86400000),
       interval: "1d",
