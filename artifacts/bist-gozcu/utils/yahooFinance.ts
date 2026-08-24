@@ -13,7 +13,26 @@ export interface QuoteData {
   fiftyTwoWeekLow: number;
   marketCap: number;
   averageDailyVolume3Month: number;
+  /** Kaynağın fiyatı son güncellediği Unix zamanı; yoksa null. */
+  marketTimestamp: number | null;
+  /** Quote’un uygulama tarafından alındığı Unix zamanı. */
+  fetchedAt: number;
+  /** Kaynakta bildirilen gecikme saniyesi; Yahoo için 15 dakika gibi. */
+  delayedBySeconds: number | null;
+  /** Quote yanıtında belirtilen piyasa durumu. */
+  marketState: string | null;
+  /** Veri tazeliği sınıfı. */
+  freshness: DataFreshness;
+  /** Verinin hangi kaynaktan geldiği. */
+  dataSource: string;
 }
+
+export type DataFreshness =
+  | "fresh"
+  | "slightly_delayed"
+  | "stale"
+  | "unknown"
+  | "closed_reference";
 
 export interface ChartResult {
   symbol: string;
@@ -91,7 +110,8 @@ async function fetchWithTimeout(
   init: RequestInit = {},
   timeoutMs = QUOTE_TIMEOUT_MS,
 ): Promise<Response> {
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const controller =
+    typeof AbortController !== "undefined" ? new AbortController() : null;
   const requestInit: RequestInit = controller
     ? { ...init, signal: controller.signal }
     : init;
@@ -115,7 +135,10 @@ const PERMANENT_PROXY_BASE = "https://bist-gozcu--careki73.replit.app/api";
 function getProxyBase(): string {
   const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
   // Android’da EAS ortam değişkeni boş veya eski olsa bile kalıcı proxy kesin kullanılır.
-  if (!configuredDomain || configuredDomain === "bist-gozcu--careki73.replit.app") {
+  if (
+    !configuredDomain ||
+    configuredDomain === "bist-gozcu--careki73.replit.app"
+  ) {
     return PERMANENT_PROXY_BASE;
   }
   return `https://${configuredDomain}/api`;
@@ -127,9 +150,12 @@ let crumbFetchTime = 0;
 async function getCrumb(): Promise<string | null> {
   if (cachedCrumb && Date.now() - crumbFetchTime < 3600000) return cachedCrumb;
   try {
-    const res = await fetchWithTimeout("https://query1.finance.yahoo.com/v1/test/getcrumb", {
-      headers: YF_HEADERS,
-    });
+    const res = await fetchWithTimeout(
+      "https://query1.finance.yahoo.com/v1/test/getcrumb",
+      {
+        headers: YF_HEADERS,
+      },
+    );
     if (res.ok) {
       const text = await res.text();
       if (text && !text.includes("<") && text.length < 30) {
@@ -163,7 +189,10 @@ type YahooChartQuote = {
 const asNumber = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
-async function fetchQuoteFromChart(symbol: string, timeoutMs = QUOTE_TIMEOUT_MS): Promise<QuoteData | null> {
+async function fetchQuoteFromChart(
+  symbol: string,
+  timeoutMs = QUOTE_TIMEOUT_MS,
+): Promise<QuoteData | null> {
   try {
     const yahooSymbol = `${symbol.replace(".IS", "").toUpperCase()}.IS`;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=3mo&includePrePost=false`;
@@ -171,7 +200,7 @@ async function fetchQuoteFromChart(symbol: string, timeoutMs = QUOTE_TIMEOUT_MS)
     const res = await fetchWithTimeout(url, undefined, timeoutMs);
     if (!res.ok) return null;
 
-    const json = await res.json() as YahooChartQuote;
+    const json = (await res.json()) as YahooChartQuote;
     const result = json.chart?.result?.[0];
     const meta = result?.meta ?? {};
     const quote = result?.indicators?.quote?.[0] ?? {};
@@ -181,12 +210,15 @@ async function fetchQuoteFromChart(symbol: string, timeoutMs = QUOTE_TIMEOUT_MS)
     const lows = quote.low ?? [];
     const volumes = quote.volume ?? [];
     const validIndexes = closes
-      .map((close, index) => (typeof close === "number" && close > 0 ? index : -1))
+      .map((close, index) =>
+        typeof close === "number" && close > 0 ? index : -1,
+      )
       .filter((index) => index >= 0);
     const lastIndex = validIndexes.at(-1);
     if (lastIndex == null) return null;
 
-    const price = asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
+    const price =
+      asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
     const previousClose =
       asNumber(meta.chartPreviousClose) ||
       asNumber(closes[validIndexes.at(-2) ?? lastIndex]);
@@ -200,18 +232,24 @@ async function fetchQuoteFromChart(symbol: string, timeoutMs = QUOTE_TIMEOUT_MS)
       symbol: symbol.replace(".IS", "").toUpperCase(),
       shortName: String(meta.shortName ?? meta.longName ?? symbol),
       regularMarketPrice: price,
-      regularMarketChangePercent: previousClose ? (change / previousClose) * 100 : 0,
+      regularMarketChangePercent: previousClose
+        ? (change / previousClose) * 100
+        : 0,
       regularMarketChange: change,
-      regularMarketVolume: asNumber(meta.regularMarketVolume) || asNumber(volumes[lastIndex]),
+      regularMarketVolume:
+        asNumber(meta.regularMarketVolume) || asNumber(volumes[lastIndex]),
       regularMarketPreviousClose: previousClose,
       regularMarketOpen: asNumber(opens[lastIndex]),
-      regularMarketDayHigh: asNumber(meta.regularMarketDayHigh) || asNumber(highs[lastIndex]),
-      regularMarketDayLow: asNumber(meta.regularMarketDayLow) || asNumber(lows[lastIndex]),
+      regularMarketDayHigh:
+        asNumber(meta.regularMarketDayHigh) || asNumber(highs[lastIndex]),
+      regularMarketDayLow:
+        asNumber(meta.regularMarketDayLow) || asNumber(lows[lastIndex]),
       fiftyTwoWeekHigh: asNumber(meta.fiftyTwoWeekHigh),
       fiftyTwoWeekLow: asNumber(meta.fiftyTwoWeekLow),
       marketCap: asNumber(meta.marketCap),
       // Quote endpoint’i kapalı olduğunda 5 günlük chart hacmi güvenli yaklaşık değerdir.
       averageDailyVolume3Month: averageVolume,
+      ...normalizeQuoteMetadata(meta, "Yahoo chart fallback"),
     };
   } catch {
     return null;
@@ -222,14 +260,22 @@ async function fetchQuotesFromChart(symbols: string[]): Promise<QuoteData[]> {
   const results: QuoteData[] = [];
   const concurrency = 4;
   const deadline = Date.now() + QUOTE_BATCH_DEADLINE_MS;
-  for (let i = 0; i < symbols.length && Date.now() < deadline; i += concurrency) {
+  for (
+    let i = 0;
+    i < symbols.length && Date.now() < deadline;
+    i += concurrency
+  ) {
     const remaining = deadline - Date.now();
     const batch = await Promise.all(
-      symbols.slice(i, i + concurrency).map((symbol) =>
-        fetchQuoteFromChart(symbol, Math.min(QUOTE_TIMEOUT_MS, remaining)),
-      ),
+      symbols
+        .slice(i, i + concurrency)
+        .map((symbol) =>
+          fetchQuoteFromChart(symbol, Math.min(QUOTE_TIMEOUT_MS, remaining)),
+        ),
     );
-    results.push(...batch.filter((quote): quote is QuoteData => quote !== null));
+    results.push(
+      ...batch.filter((quote): quote is QuoteData => quote !== null),
+    );
   }
   return results;
 }
@@ -248,8 +294,107 @@ const expectedIntervalSeconds: Record<string, number> = {
   "1mo": 30 * 24 * 60 * 60,
 };
 
+export function classifyDataFreshness(
+  marketTimestamp: number | null,
+  fetchedAt = Date.now(),
+  marketOpen = isBistOpen(),
+): DataFreshness {
+  if (!marketTimestamp || !Number.isFinite(marketTimestamp)) return "unknown";
+  if (!marketOpen) return "closed_reference";
+  const ageMinutes = Math.max(0, fetchedAt - marketTimestamp * 1000) / 60000;
+  if (ageMinutes <= 10) return "fresh";
+  if (ageMinutes <= 30) return "slightly_delayed";
+  if (ageMinutes <= 120) return "stale";
+  return "unknown";
+}
+
+export function getFreshnessLabel(freshness: DataFreshness): string {
+  switch (freshness) {
+    case "fresh":
+      return "Kaynak zamanı yeni";
+    case "slightly_delayed":
+      return "Kısa gecikmeli";
+    case "stale":
+      return "Eski veri";
+    case "closed_reference":
+      return "Son kapanış referansı";
+    default:
+      return "Zamanı doğrulanamadı";
+  }
+}
+
+export function formatMarketTimestamp(timestamp: number | null): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return "zaman bilinmiyor";
+  return new Date(timestamp * 1000).toLocaleString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function getFreshnessWarning(freshness: DataFreshness): string | null {
+  switch (freshness) {
+    case "fresh":
+      return "Kaynak zamanı yeni; gerçek zamanlı olduğu doğrulanmadı.";
+    case "slightly_delayed":
+      return "Veri kısa gecikmeli; yeni telefon bildirimi kapalı.";
+    case "stale":
+      return "Veri eski; yeni radar adayı ve bildirim üretilmedi.";
+    case "closed_reference":
+      return "Piyasa kapalı; analiz son tamamlanmış kapanışa göre.";
+    default:
+      return "Veri zamanı doğrulanamadı; karar için yeterli güncel veri yok.";
+  }
+}
+
+function normalizeQuoteMetadata(
+  quote: Record<string, unknown>,
+  dataSource: string,
+): Pick<
+  QuoteData,
+  | "marketTimestamp"
+  | "fetchedAt"
+  | "delayedBySeconds"
+  | "marketState"
+  | "freshness"
+  | "dataSource"
+> {
+  const fetchedAt = Date.now();
+  const rawTimestamp = Number(quote.regularMarketTime);
+  const marketTimestamp =
+    Number.isFinite(rawTimestamp) && rawTimestamp > 0 ? rawTimestamp : null;
+  const rawDelay = Number(quote.exchangeDataDelayedBy);
+  const delayedBySeconds =
+    Number.isFinite(rawDelay) && rawDelay >= 0 ? rawDelay : null;
+  const marketState =
+    typeof quote.marketState === "string" ? quote.marketState : null;
+  const quoteSourceName =
+    typeof quote.quoteSourceName === "string" ? quote.quoteSourceName : null;
+  const baseFreshness = classifyDataFreshness(marketTimestamp, fetchedAt);
+  const knownDelayed =
+    Boolean(quoteSourceName?.toLowerCase().includes("delayed")) ||
+    (delayedBySeconds != null && delayedBySeconds > 0);
+  const freshness: DataFreshness =
+    knownDelayed && baseFreshness === "fresh"
+      ? "slightly_delayed"
+      : baseFreshness;
+  return {
+    marketTimestamp,
+    fetchedAt,
+    delayedBySeconds,
+    marketState,
+    freshness,
+    dataSource: quoteSourceName
+      ? `${dataSource} · ${quoteSourceName}`
+      : dataSource,
+  };
+}
+
 function normalizeProxyResults(payload: unknown): QuoteData[] {
-  const root = payload as { quoteResponse?: { result?: Array<Record<string, unknown>> } };
+  const root = payload as {
+    quoteResponse?: { result?: Array<Record<string, unknown>> };
+  };
   const rawResults = Array.isArray(root?.quoteResponse?.result)
     ? root.quoteResponse.result
     : [];
@@ -273,12 +418,16 @@ function normalizeProxyResults(payload: unknown): QuoteData[] {
         fiftyTwoWeekLow: Number(q.fiftyTwoWeekLow) || 0,
         marketCap: Number(q.marketCap) || 0,
         averageDailyVolume3Month: Number(q.averageDailyVolume3Month) || 0,
+        ...normalizeQuoteMetadata(q, "BIST Gözcü proxy / Yahoo quote"),
       } as QuoteData;
     })
     .filter((q) => q.symbol.length > 0 && q.regularMarketPrice > 0);
 }
 
-async function fetchProxyChunk(proxyBase: string, symbols: string[]): Promise<QuoteData[]> {
+async function fetchProxyChunk(
+  proxyBase: string,
+  symbols: string[],
+): Promise<QuoteData[]> {
   const url = `${proxyBase}/bist/quotes?symbols=${symbols.join(",")}`;
   for (let attempt = 0; attempt < PROXY_RETRIES; attempt += 1) {
     try {
@@ -295,56 +444,77 @@ async function fetchProxyChunk(proxyBase: string, symbols: string[]): Promise<Qu
 
 async function fetchMacroQuotesDirect(symbols: string[]): Promise<QuoteData[]> {
   const hosts = ["query2.finance.yahoo.com", "query1.finance.yahoo.com"];
-  const results = await Promise.all(symbols.map(async (symbol) => {
-    for (const host of hosts) {
-      try {
-        const url = `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d&includePrePost=false`;
-        const res = await fetchWithTimeout(url, { headers: YF_HEADERS }, 12_000);
-        if (!res.ok) continue;
-        const json = await res.json() as YahooChartQuote;
-        const result = json.chart?.result?.[0];
-        const meta = result?.meta ?? {};
-        const quote = result?.indicators?.quote?.[0] ?? {};
-        const closes = quote.close ?? [];
-        const validIndexes = closes
-          .map((close, index) => (typeof close === "number" && close > 0 ? index : -1))
-          .filter((index) => index >= 0);
-        const lastIndex = validIndexes.at(-1);
-        if (lastIndex == null) continue;
-        const price = asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
-        const previousClose = asNumber(meta.chartPreviousClose) || asNumber(closes[validIndexes.at(-2) ?? lastIndex]);
-        if (price <= 0) continue;
-        const volumeValues = (quote.volume ?? []).map(asNumber).filter((volume) => volume > 0);
-        const averageVolume = volumeValues.length
-          ? volumeValues.reduce((sum, volume) => sum + volume / volumeValues.length, 0)
-          : 0;
-        const change = price - previousClose;
-        return {
-          symbol: symbol.replace(/\.IS$/i, "").toUpperCase(),
-          shortName: String(meta.shortName ?? meta.longName ?? symbol),
-          regularMarketPrice: price,
-          regularMarketChangePercent: previousClose ? (change / previousClose) * 100 : 0,
-          regularMarketChange: change,
-          regularMarketVolume: asNumber(meta.regularMarketVolume),
-          regularMarketPreviousClose: previousClose,
-          regularMarketOpen: asNumber(meta.regularMarketOpen),
-          regularMarketDayHigh: asNumber(meta.regularMarketDayHigh),
-          regularMarketDayLow: asNumber(meta.regularMarketDayLow),
-          fiftyTwoWeekHigh: asNumber(meta.fiftyTwoWeekHigh),
-          fiftyTwoWeekLow: asNumber(meta.fiftyTwoWeekLow),
-          marketCap: asNumber(meta.marketCap),
-          averageDailyVolume3Month: averageVolume,
-        } as QuoteData;
-      } catch {
-        // Bir Yahoo hostu kota veya ağ hatası verirse diğer host denenir.
+  const results = await Promise.all(
+    symbols.map(async (symbol) => {
+      for (const host of hosts) {
+        try {
+          const url = `https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d&includePrePost=false`;
+          const res = await fetchWithTimeout(
+            url,
+            { headers: YF_HEADERS },
+            12_000,
+          );
+          if (!res.ok) continue;
+          const json = (await res.json()) as YahooChartQuote;
+          const result = json.chart?.result?.[0];
+          const meta = result?.meta ?? {};
+          const quote = result?.indicators?.quote?.[0] ?? {};
+          const closes = quote.close ?? [];
+          const validIndexes = closes
+            .map((close, index) =>
+              typeof close === "number" && close > 0 ? index : -1,
+            )
+            .filter((index) => index >= 0);
+          const lastIndex = validIndexes.at(-1);
+          if (lastIndex == null) continue;
+          const price =
+            asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
+          const previousClose =
+            asNumber(meta.chartPreviousClose) ||
+            asNumber(closes[validIndexes.at(-2) ?? lastIndex]);
+          if (price <= 0) continue;
+          const volumeValues = (quote.volume ?? [])
+            .map(asNumber)
+            .filter((volume) => volume > 0);
+          const averageVolume = volumeValues.length
+            ? volumeValues.reduce(
+                (sum, volume) => sum + volume / volumeValues.length,
+                0,
+              )
+            : 0;
+          const change = price - previousClose;
+          return {
+            symbol: symbol.replace(/\.IS$/i, "").toUpperCase(),
+            shortName: String(meta.shortName ?? meta.longName ?? symbol),
+            regularMarketPrice: price,
+            regularMarketChangePercent: previousClose
+              ? (change / previousClose) * 100
+              : 0,
+            regularMarketChange: change,
+            regularMarketVolume: asNumber(meta.regularMarketVolume),
+            regularMarketPreviousClose: previousClose,
+            regularMarketOpen: asNumber(meta.regularMarketOpen),
+            regularMarketDayHigh: asNumber(meta.regularMarketDayHigh),
+            regularMarketDayLow: asNumber(meta.regularMarketDayLow),
+            fiftyTwoWeekHigh: asNumber(meta.fiftyTwoWeekHigh),
+            fiftyTwoWeekLow: asNumber(meta.fiftyTwoWeekLow),
+            marketCap: asNumber(meta.marketCap),
+            averageDailyVolume3Month: averageVolume,
+            ...normalizeQuoteMetadata(meta, "Yahoo macro chart fallback"),
+          } as QuoteData;
+        } catch {
+          // Bir Yahoo hostu kota veya ağ hatası verirse diğer host denenir.
+        }
       }
-    }
-    return null;
-  }));
+      return null;
+    }),
+  );
   return results.filter((quote): quote is QuoteData => quote !== null);
 }
 
-export async function fetchMacroQuotes(symbols: string[]): Promise<QuoteData[]> {
+export async function fetchMacroQuotes(
+  symbols: string[],
+): Promise<QuoteData[]> {
   const proxyBase = getProxyBase();
   try {
     const url = `${proxyBase}/bist/macro?symbols=${symbols.map(encodeURIComponent).join(",")}`;
@@ -389,32 +559,50 @@ function toCryptoQuote(
     fiftyTwoWeekLow: 0,
     marketCap: 0,
     averageDailyVolume3Month: volume,
+    marketTimestamp: null,
+    fetchedAt: Date.now(),
+    delayedBySeconds: 0,
+    marketState: "OPEN",
+    freshness: "fresh",
+    dataSource: "Binance/CoinGecko kripto quote",
   };
 }
 
 export async function fetchCryptoQuotes(): Promise<QuoteData[]> {
   try {
-    const url = "https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22%5D";
+    const url =
+      "https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22%5D";
     const res = await fetchWithTimeout(url, undefined, 10_000);
     if (res.ok) {
-      const payload = await res.json() as Array<Record<string, unknown>>;
+      const payload = (await res.json()) as Array<Record<string, unknown>>;
       const quotes = payload.flatMap((item) => {
         const pair = CRYPTO_PAIRS[String(item.symbol ?? "").toUpperCase()];
         const lastPrice = Number(item.lastPrice);
         const change = Number(item.priceChange);
         const changePercent = Number(item.priceChangePercent);
         const previousClose = Number(item.prevClosePrice);
-        if (!pair || !Number.isFinite(lastPrice) || lastPrice <= 0 || !Number.isFinite(previousClose) || previousClose <= 0) return [];
-        return [toCryptoQuote(
-          pair,
-          lastPrice,
-          Number.isFinite(change) ? change : lastPrice - previousClose,
-          Number.isFinite(changePercent) ? changePercent : ((lastPrice - previousClose) / previousClose) * 100,
-          previousClose,
-          Number.isFinite(Number(item.volume)) ? Number(item.volume) : 0,
-          Number(item.highPrice) || lastPrice,
-          Number(item.lowPrice) || lastPrice,
-        )];
+        if (
+          !pair ||
+          !Number.isFinite(lastPrice) ||
+          lastPrice <= 0 ||
+          !Number.isFinite(previousClose) ||
+          previousClose <= 0
+        )
+          return [];
+        return [
+          toCryptoQuote(
+            pair,
+            lastPrice,
+            Number.isFinite(change) ? change : lastPrice - previousClose,
+            Number.isFinite(changePercent)
+              ? changePercent
+              : ((lastPrice - previousClose) / previousClose) * 100,
+            previousClose,
+            Number.isFinite(Number(item.volume)) ? Number(item.volume) : 0,
+            Number(item.highPrice) || lastPrice,
+            Number(item.lowPrice) || lastPrice,
+          ),
+        ];
       });
       if (quotes.length > 0) return quotes;
     }
@@ -423,46 +611,84 @@ export async function fetchCryptoQuotes(): Promise<QuoteData[]> {
   }
 
   try {
-    const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true";
+    const url =
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true";
     const res = await fetchWithTimeout(url, undefined, 10_000);
     if (!res.ok) return [];
-    const payload = await res.json() as Record<string, { usd?: number; usd_24h_change?: number }>;
-    return ([
-      ["bitcoin", { symbol: "BTC-USD", shortName: "Bitcoin / USD" }],
-      ["ethereum", { symbol: "ETH-USD", shortName: "Ethereum / USD" }],
-    ] as const).flatMap(([id, pair]) => {
+    const payload = (await res.json()) as Record<
+      string,
+      { usd?: number; usd_24h_change?: number }
+    >;
+    return (
+      [
+        ["bitcoin", { symbol: "BTC-USD", shortName: "Bitcoin / USD" }],
+        ["ethereum", { symbol: "ETH-USD", shortName: "Ethereum / USD" }],
+      ] as const
+    ).flatMap(([id, pair]) => {
       const lastPrice = Number(payload[id]?.usd);
       const changePercent = Number(payload[id]?.usd_24h_change);
       if (!Number.isFinite(lastPrice) || lastPrice <= 0) return [];
-      const previousClose = Number.isFinite(changePercent) ? lastPrice / (1 + changePercent / 100) : lastPrice;
-      return [toCryptoQuote(pair, lastPrice, lastPrice - previousClose, Number.isFinite(changePercent) ? changePercent : 0, previousClose, 0, lastPrice, lastPrice)];
+      const previousClose = Number.isFinite(changePercent)
+        ? lastPrice / (1 + changePercent / 100)
+        : lastPrice;
+      return [
+        toCryptoQuote(
+          pair,
+          lastPrice,
+          lastPrice - previousClose,
+          Number.isFinite(changePercent) ? changePercent : 0,
+          previousClose,
+          0,
+          lastPrice,
+          lastPrice,
+        ),
+      ];
     });
   } catch {
     return [];
   }
 }
 
-export async function fetchStockOverview(symbol: string): Promise<StockOverview | null> {
+export async function fetchStockOverview(
+  symbol: string,
+): Promise<StockOverview | null> {
   const normalizedSymbol = symbol.trim().toUpperCase().replace(/\.IS$/i, "");
   const proxyBase = getProxyBase();
   const emptyFundamentals: StockFundamentals = {
-    trailingPE: null, forwardPE: null, priceToBook: null, priceToSales: null,
-    enterpriseToEbitda: null, bookValue: null, returnOnEquity: null,
-    profitMargins: null, revenueGrowth: null, earningsGrowth: null,
-    debtToEquity: null, dividendYield: null, targetMeanPrice: null,
-    recommendationMean: null, analystCount: null, asOf: null,
+    trailingPE: null,
+    forwardPE: null,
+    priceToBook: null,
+    priceToSales: null,
+    enterpriseToEbitda: null,
+    bookValue: null,
+    returnOnEquity: null,
+    profitMargins: null,
+    revenueGrowth: null,
+    earningsGrowth: null,
+    debtToEquity: null,
+    dividendYield: null,
+    targetMeanPrice: null,
+    recommendationMean: null,
+    analystCount: null,
+    asOf: null,
   };
 
   try {
     const url = `${proxyBase}/bist/stock/${encodeURIComponent(normalizedSymbol)}/overview`;
     const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
     if (res.ok) {
-      const payload = await res.json() as Partial<StockOverview> & { quote?: Record<string, unknown> };
+      const payload = (await res.json()) as Partial<StockOverview> & {
+        quote?: Record<string, unknown>;
+      };
       const normalizedQuote = payload.quote
-        ? normalizeProxyResults({ quoteResponse: { result: [payload.quote] } })[0]
+        ? normalizeProxyResults({
+            quoteResponse: { result: [payload.quote] },
+          })[0]
         : undefined;
       return {
-        symbol: String(payload.symbol ?? normalizedSymbol).replace(/\.IS$/i, "").toUpperCase(),
+        symbol: String(payload.symbol ?? normalizedSymbol)
+          .replace(/\.IS$/i, "")
+          .toUpperCase(),
         quote: normalizedQuote,
         fundamentals: { ...emptyFundamentals, ...(payload.fundamentals ?? {}) },
         news: Array.isArray(payload.news) ? payload.news : [],
@@ -491,20 +717,25 @@ export async function fetchStockOverview(symbol: string): Promise<StockOverview 
   }
 }
 
-export async function fetchMarketNews(query = "Borsa Istanbul", count = 8): Promise<MarketNews[]> {
+export async function fetchMarketNews(
+  query = "Borsa Istanbul",
+  count = 8,
+): Promise<MarketNews[]> {
   const proxyBase = getProxyBase();
   try {
     const url = `${proxyBase}/bist/news?q=${encodeURIComponent(query)}&count=${Math.min(Math.max(count, 1), 12)}`;
     const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
     if (!res.ok) return [];
-    const payload = await res.json() as { news?: MarketNews[] };
+    const payload = (await res.json()) as { news?: MarketNews[] };
     return Array.isArray(payload.news) ? payload.news : [];
   } catch {
     return [];
   }
 }
 
-export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> {
+export async function fetchBatchQuotes(
+  symbols: string[],
+): Promise<QuoteData[]> {
   const proxyBase = getProxyBase();
 
   if (proxyBase) {
@@ -524,7 +755,9 @@ export async function fetchBatchQuotes(symbols: string[]): Promise<QuoteData[]> 
   return fetchQuotesFromChart(symbols);
 }
 
-export async function fetchSingleQuote(symbol: string): Promise<QuoteData | null> {
+export async function fetchSingleQuote(
+  symbol: string,
+): Promise<QuoteData | null> {
   const normalized = symbol.replace(/\.IS$/i, "").trim().toUpperCase();
   if (!/^[A-Z0-9]{3,6}$/.test(normalized)) return null;
   const quotes = await fetchBatchQuotes([normalized]);
@@ -532,16 +765,24 @@ export async function fetchSingleQuote(symbol: string): Promise<QuoteData | null
 }
 
 function parseChartJson(json: unknown, sym: string): ChartResult | null {
-  const chart = (json as Record<string, Record<string, Array<Record<string, unknown>>>>)
-    ?.chart?.result?.[0];
+  const chart = (
+    json as Record<string, Record<string, Array<Record<string, unknown>>>>
+  )?.chart?.result?.[0];
   if (!chart) return null;
 
   const timestamps: number[] = (chart.timestamp as number[]) ?? [];
-  const quote = (chart.indicators as Record<string, Array<Record<string, (number | null)[]>>>)
-    ?.quote?.[0] ?? {};
+  const quote =
+    (
+      chart.indicators as Record<
+        string,
+        Array<Record<string, (number | null)[]>>
+      >
+    )?.quote?.[0] ?? {};
 
   const clean = (arr: (number | null)[] | undefined): number[] =>
-    (arr ?? []).map((v) => (v == null || isNaN(v as number) ? 0 : (v as number)));
+    (arr ?? []).map((v) =>
+      v == null || isNaN(v as number) ? 0 : (v as number),
+    );
 
   return {
     symbol: sym.replace(".IS", ""),
@@ -554,7 +795,10 @@ function parseChartJson(json: unknown, sym: string): ChartResult | null {
   };
 }
 
-function chartIntervalMatches(data: ChartResult, expectedInterval: string): boolean {
+function chartIntervalMatches(
+  data: ChartResult,
+  expectedInterval: string,
+): boolean {
   const expected = expectedIntervalSeconds[expectedInterval];
   if (!expected || data.timestamps.length < 4) return true;
   const diffs = data.timestamps
@@ -579,28 +823,55 @@ function aggregateCandles(data: ChartResult, groupSize: number): ChartResult {
 
   for (let i = 0; i < data.closes.length; i += groupSize) {
     const end = Math.min(i + groupSize, data.closes.length);
-    const slice = { c: data.closes.slice(i, end), o: data.opens.slice(i, end), h: data.highs.slice(i, end), l: data.lows.slice(i, end), v: data.volumes.slice(i, end) };
-    const validIdx = slice.c.map((c, idx) => (c > 0 ? idx : -1)).filter((idx) => idx >= 0);
+    const slice = {
+      c: data.closes.slice(i, end),
+      o: data.opens.slice(i, end),
+      h: data.highs.slice(i, end),
+      l: data.lows.slice(i, end),
+      v: data.volumes.slice(i, end),
+    };
+    const validIdx = slice.c
+      .map((c, idx) => (c > 0 ? idx : -1))
+      .filter((idx) => idx >= 0);
     if (validIdx.length === 0) continue;
     timestamps.push(data.timestamps[i]);
     opens.push(slice.o[validIdx[0]] || slice.c[validIdx[0]]);
     closes.push(slice.c[validIdx[validIdx.length - 1]]);
-    highs.push(Math.max(...validIdx.map((idx) => slice.h[idx] || slice.c[idx])));
-    lows.push(Math.min(...validIdx.map((idx) => (slice.l[idx] > 0 ? slice.l[idx] : slice.c[idx]))));
+    highs.push(
+      Math.max(...validIdx.map((idx) => slice.h[idx] || slice.c[idx])),
+    );
+    lows.push(
+      Math.min(
+        ...validIdx.map((idx) =>
+          slice.l[idx] > 0 ? slice.l[idx] : slice.c[idx],
+        ),
+      ),
+    );
     volumes.push(slice.v.reduce((s, v) => s + v, 0));
   }
 
-  return { symbol: data.symbol, timestamps, closes, opens, highs, lows, volumes };
+  return {
+    symbol: data.symbol,
+    timestamps,
+    closes,
+    opens,
+    highs,
+    lows,
+    volumes,
+  };
 }
 
 export async function fetchChartData(
   symbol: string,
   range: ChartRange = "3mo",
-  intradayInterval?: IntradayInterval
+  intradayInterval?: IntradayInterval,
 ): Promise<ChartResult | null> {
-  const yahooInterval = range === "1d" && intradayInterval
-    ? (intradayInterval === "10m" ? "5m" : intradayInterval)
-    : RANGE_INTERVAL[range];
+  const yahooInterval =
+    range === "1d" && intradayInterval
+      ? intradayInterval === "10m"
+        ? "5m"
+        : intradayInterval
+      : RANGE_INTERVAL[range];
   const proxyBase = getProxyBase();
 
   const finish = (result: ChartResult | null): ChartResult | null => {
@@ -622,7 +893,8 @@ export async function fetchChartData(
       if (res.ok) {
         const json = await res.json();
         const result = parseChartJson(json, symbol);
-        if (result && chartIntervalMatches(result, yahooInterval)) return finish(result);
+        if (result && chartIntervalMatches(result, yahooInterval))
+          return finish(result);
       }
     } catch {}
   }
@@ -633,7 +905,8 @@ export async function fetchChartData(
     if (res.ok) {
       const json = await res.json();
       const result = parseChartJson(json, symbol);
-      if (result && chartIntervalMatches(result, yahooInterval)) return finish(result);
+      if (result && chartIntervalMatches(result, yahooInterval))
+        return finish(result);
     }
   } catch {}
 
@@ -644,7 +917,9 @@ export async function fetchChartData(
     const res = await fetchWithTimeout(url, { headers: YF_HEADERS });
     const json = await res.json();
     const result = parseChartJson(json, symbol);
-    return result && chartIntervalMatches(result, yahooInterval) ? finish(result) : null;
+    return result && chartIntervalMatches(result, yahooInterval)
+      ? finish(result)
+      : null;
   } catch {
     return null;
   }

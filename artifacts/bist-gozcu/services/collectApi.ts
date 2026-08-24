@@ -2,7 +2,12 @@
 
 import { Platform } from "react-native";
 import { UNIQUE_BIST_STOCKS } from "@/constants/bistStocks";
-import { fetchBatchQuotes } from "@/utils/yahooFinance";
+import {
+  classifyDataFreshness,
+  DataFreshness,
+  getFreshnessWarning,
+  fetchBatchQuotes,
+} from "@/utils/yahooFinance";
 
 export type Hisse = {
   sembol: string;
@@ -11,6 +16,16 @@ export type Hisse = {
   hacim: number;
   /** Yahoo Finance üç aylık ortalama hacmi; bazı veri kaynaklarında bulunmayabilir. */
   ortalamaHacim?: number;
+  /** Kaynağın fiyatı son güncellediği Unix zamanı; yoksa null. */
+  piyasaZamani: number | null;
+  /** Quote’un uygulama tarafından alındığı Unix zamanı. */
+  veriCekilmeZamani: number;
+  /** Veri tazeliği sınıfı. */
+  veriKalitesi: DataFreshness;
+  /** Veri kaynağının kullanıcıya gösterilecek adı. */
+  veriKaynagi: string;
+  /** Risk bandında gösterilecek uyarı. */
+  veriUyarisi: string | null;
 };
 
 export type TemelVeri = {
@@ -24,6 +39,14 @@ type QuoteRecord = {
   regularMarketChangePercent?: unknown;
   regularMarketVolume?: unknown;
   averageDailyVolume3Month?: unknown;
+  regularMarketTime?: unknown;
+  exchangeDataDelayedBy?: unknown;
+  marketState?: unknown;
+  fetchedAt?: unknown;
+  marketTimestamp?: unknown;
+  delayedBySeconds?: unknown;
+  freshness?: unknown;
+  dataSource?: unknown;
 };
 
 type QuoteResponse = {
@@ -68,17 +91,55 @@ export const parseTRNumber = (
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const normalizeQuote = (quote: QuoteRecord): Hisse => ({
-  sembol: String(quote.symbol ?? "").replace(".IS", "").toUpperCase(),
-  fiyat: parseTRNumber(quote.regularMarketPrice as string | number | null | undefined),
-  degisimYuzde: parseTRNumber(
-    quote.regularMarketChangePercent as string | number | null | undefined,
-  ),
-  hacim: parseTRNumber(quote.regularMarketVolume as string | number | null | undefined),
-  ortalamaHacim: parseTRNumber(
-    quote.averageDailyVolume3Month as string | number | null | undefined,
-  ),
-});
+const normalizeQuote = (quote: QuoteRecord): Hisse => {
+  const veriCekilmeZamani =
+    parseTRNumber(quote.fetchedAt as string | number | null | undefined) ||
+    Date.now();
+  const rawPiyasaZamani = parseTRNumber(
+    (quote.marketTimestamp ?? quote.regularMarketTime) as
+      | string
+      | number
+      | null
+      | undefined,
+  );
+  const piyasaZamani = rawPiyasaZamani > 0 ? rawPiyasaZamani : null;
+  const rawFreshness =
+    typeof quote.freshness === "string" ? quote.freshness : null;
+  const veriKalitesi: DataFreshness =
+    rawFreshness === "fresh" ||
+    rawFreshness === "slightly_delayed" ||
+    rawFreshness === "stale" ||
+    rawFreshness === "unknown" ||
+    rawFreshness === "closed_reference"
+      ? rawFreshness
+      : classifyDataFreshness(piyasaZamani, veriCekilmeZamani);
+  const veriKaynagi =
+    typeof quote.dataSource === "string" && quote.dataSource.length > 0
+      ? quote.dataSource
+      : "BIST Gözcü quote kaynağı";
+  return {
+    sembol: String(quote.symbol ?? "")
+      .replace(".IS", "")
+      .toUpperCase(),
+    fiyat: parseTRNumber(
+      quote.regularMarketPrice as string | number | null | undefined,
+    ),
+    degisimYuzde: parseTRNumber(
+      quote.regularMarketChangePercent as string | number | null | undefined,
+    ),
+    hacim: parseTRNumber(
+      quote.regularMarketVolume as string | number | null | undefined,
+    ),
+    ortalamaHacim: parseTRNumber(
+      quote.averageDailyVolume3Month as string | number | null | undefined,
+    ),
+    piyasaZamani,
+    veriCekilmeZamani,
+    veriKalitesi,
+    veriKaynagi,
+    veriUyarisi: getFreshnessWarning(veriKalitesi),
+  };
+};
 
 const validQuotes = (quotes: Hisse[]): Hisse[] =>
   quotes.filter((quote) => quote.sembol.length > 0 && quote.fiyat > 0);
@@ -97,7 +158,9 @@ export const getBist100 = async (): Promise<Hisse[]> => {
     // quote yanıtı gibi parse etmeyip doğrudan güvenli fallback’e geçiyoruz.
     if (response.ok && contentType.includes("application/json")) {
       const payload = (await response.json()) as QuoteResponse;
-      const quotes = validQuotes((payload.quoteResponse?.result ?? []).map(normalizeQuote));
+      const quotes = validQuotes(
+        (payload.quoteResponse?.result ?? []).map(normalizeQuote),
+      );
       if (quotes.length > 0) return quotes;
     }
   } catch {

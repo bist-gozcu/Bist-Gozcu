@@ -21,7 +21,17 @@ import { useStocks } from "@/contexts/StockContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useWatchlist } from "@/contexts/WatchlistContext";
 import { AlertType, useAlerts } from "@/contexts/AlertContext";
-import { fetchChartData, fetchStockOverview, ChartResult, ChartRange, getMarketSession, StockOverview } from "@/utils/yahooFinance";
+import {
+  fetchChartData,
+  fetchStockOverview,
+  ChartResult,
+  ChartRange,
+  formatMarketTimestamp,
+  getFreshnessLabel,
+  getFreshnessWarning,
+  getMarketSession,
+  StockOverview,
+} from "@/utils/yahooFinance";
 import {
   analyzeStock,
   AnalysisResult,
@@ -51,20 +61,34 @@ import {
 } from "@/components/TabIcon";
 
 const RANGES: { key: ChartRange; label: string }[] = [
-  { key: "1d",  label: "1G" },
-  { key: "5d",  label: "1H" },
+  { key: "1d", label: "1G" },
+  { key: "5d", label: "1H" },
   { key: "1mo", label: "1A" },
   { key: "3mo", label: "3A" },
-  { key: "1y",  label: "1Y" },
-  { key: "5y",  label: "5Y" },
+  { key: "1y", label: "1Y" },
+  { key: "5y", label: "5Y" },
 ];
 
-function StatRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+function StatRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
   const colors = useColors();
   return (
     <View style={styles.statRow}>
-      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
-      <Text style={[styles.statValue, { color: valueColor ?? colors.foreground }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+        {label}
+      </Text>
+      <Text
+        style={[styles.statValue, { color: valueColor ?? colors.foreground }]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -76,7 +100,15 @@ const INDICATOR_INFO: Record<string, { title: string; body: string }> = {
   },
 };
 
-function IndicatorCard({ label, value, subLabel, min, max, color, onInfoPress }: {
+function IndicatorCard({
+  label,
+  value,
+  subLabel,
+  min,
+  max,
+  color,
+  onInfoPress,
+}: {
   label: string;
   subLabel?: string;
   value: number;
@@ -86,27 +118,51 @@ function IndicatorCard({ label, value, subLabel, min, max, color, onInfoPress }:
   onInfoPress?: () => void;
 }) {
   const colors = useColors();
-  const pct = Math.max(0, Math.min(100, ((value - min) / (max - min || 1)) * 100));
+  const pct = Math.max(
+    0,
+    Math.min(100, ((value - min) / (max - min || 1)) * 100),
+  );
   const displayVal = isNaN(value) ? "—" : value.toFixed(1);
   return (
     <Pressable
       onPress={onInfoPress}
-      style={[styles.indCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      style={[
+        styles.indCard,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
     >
       <View style={styles.indCardTop}>
         <View style={styles.indCardLeft}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={[styles.indLabel, { color: colors.foreground }]}>{label}</Text>
-            <View style={[styles.infoDot, { borderColor: colors.mutedForeground }]}>
-              <Text style={{ color: colors.mutedForeground, fontSize: 9, fontFamily: "Inter_700Bold" }}>i</Text>
+            <Text style={[styles.indLabel, { color: colors.foreground }]}>
+              {label}
+            </Text>
+            <View
+              style={[styles.infoDot, { borderColor: colors.mutedForeground }]}
+            >
+              <Text
+                style={{
+                  color: colors.mutedForeground,
+                  fontSize: 9,
+                  fontFamily: "Inter_700Bold",
+                }}
+              >
+                i
+              </Text>
             </View>
           </View>
-          {subLabel && <Text style={[styles.indSub, { color: colors.mutedForeground }]}>{subLabel}</Text>}
+          {subLabel && (
+            <Text style={[styles.indSub, { color: colors.mutedForeground }]}>
+              {subLabel}
+            </Text>
+          )}
         </View>
         <Text style={[styles.indValue, { color }]}>{displayVal}</Text>
       </View>
       <View style={[styles.indTrack, { backgroundColor: colors.border }]}>
-        <View style={[styles.indFill, { width: `${pct}%`, backgroundColor: color }]} />
+        <View
+          style={[styles.indFill, { width: `${pct}%`, backgroundColor: color }]}
+        />
       </View>
     </Pressable>
   );
@@ -122,7 +178,9 @@ export default function StockDetailScreen() {
   const { alerts, addAlert, removeAlert } = useAlerts();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [stockOverview, setStockOverview] = useState<StockOverview | null>(null);
+  const [stockOverview, setStockOverview] = useState<StockOverview | null>(
+    null,
+  );
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
   const [range, setRange] = useState<ChartRange>("1d");
@@ -147,7 +205,9 @@ export default function StockDetailScreen() {
   useEffect(() => {
     if (!symbol) return;
     setLoadingOverview(true);
-    fetchStockOverview(symbol).then((data) => setStockOverview(data)).finally(() => setLoadingOverview(false));
+    fetchStockOverview(symbol)
+      .then((data) => setStockOverview(data))
+      .finally(() => setLoadingOverview(false));
   }, [symbol]);
 
   useEffect(() => {
@@ -156,7 +216,9 @@ export default function StockDetailScreen() {
     fetchChartData(symbol, range).then((data) => {
       setChart(data);
       if (data && data.closes.length >= 14) {
-        setAnalysis(analyzeStock(data.closes, data.highs, data.lows, data.volumes));
+        setAnalysis(
+          analyzeStock(data.closes, data.highs, data.lows, data.volumes),
+        );
       } else {
         setAnalysis(null);
       }
@@ -165,7 +227,8 @@ export default function StockDetailScreen() {
   }, [symbol, range]);
 
   const handleFav = () => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (fav) removeFavorite(symbol ?? "");
     else addFavorite(symbol ?? "");
   };
@@ -173,10 +236,12 @@ export default function StockDetailScreen() {
   const handleToggleWatchlist = () => {
     if (watched) {
       removeFromWatchlist(symbolText);
-      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (Platform.OS !== "web")
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } else {
       addToWatchlist(symbolText);
-      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS !== "web")
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   };
 
@@ -189,10 +254,14 @@ export default function StockDetailScreen() {
 
   const handleOpenAlarmModal = () => {
     if (symbolAlerts.length >= 6) {
-      Alert.alert("Alarm sınırı", "Bir hisse için en fazla 6 fiyat alarmı kurabilirsiniz.");
+      Alert.alert(
+        "Alarm sınırı",
+        "Bir hisse için en fazla 6 fiyat alarmı kurabilirsiniz.",
+      );
       return;
     }
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setAlarmTarget("");
     setAlarmNote("");
     setAlarmType("above");
@@ -206,11 +275,15 @@ export default function StockDetailScreen() {
       return;
     }
     if (symbolAlerts.length >= 6) {
-      Alert.alert("Alarm sınırı", "Bir hisse için en fazla 6 fiyat alarmı kurabilirsiniz.");
+      Alert.alert(
+        "Alarm sınırı",
+        "Bir hisse için en fazla 6 fiyat alarmı kurabilirsiniz.",
+      );
       return;
     }
     addAlert(symbolText, target, alarmType, alarmNote.trim());
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (Platform.OS !== "web")
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowAlarmModal(false);
     setAlarmTarget("");
     setAlarmNote("");
@@ -227,10 +300,13 @@ export default function StockDetailScreen() {
   const change = quote?.regularMarketChangePercent;
   const changeVal = quote?.regularMarketChange;
   const changeColor =
-    change == null ? colors.mutedForeground :
-    change > 0 ? colors.up :
-    change < 0 ? colors.down :
-    colors.neutral;
+    change == null
+      ? colors.mutedForeground
+      : change > 0
+        ? colors.up
+        : change < 0
+          ? colors.down
+          : colors.neutral;
 
   const formatNum = (n?: number) =>
     n != null ? n.toLocaleString("tr-TR", { maximumFractionDigits: 2 }) : "—";
@@ -243,26 +319,31 @@ export default function StockDetailScreen() {
   };
 
   const n = chart?.closes.length ?? 0;
-  const macdData    = chart && n >= 26 ? macd(chart.closes) : null;
-  const rsiData     = chart && n >= 14 ? rsi(chart.closes) : null;
-  const ma20Data    = chart && n >= 20 ? sma(chart.closes, 20) : null;
-  const ma50Data    = chart && n >= 50 ? sma(chart.closes, 50) : null;
-  const ma200Data   = chart && n >= 200 ? sma(chart.closes, 200) : null;
-  const atrData     = chart && n >= 15 ? atr(chart.highs, chart.lows, chart.closes, 14) : null;
+  const macdData = chart && n >= 26 ? macd(chart.closes) : null;
+  const rsiData = chart && n >= 14 ? rsi(chart.closes) : null;
+  const ma20Data = chart && n >= 20 ? sma(chart.closes, 20) : null;
+  const ma50Data = chart && n >= 50 ? sma(chart.closes, 50) : null;
+  const ma200Data = chart && n >= 200 ? sma(chart.closes, 200) : null;
+  const atrData =
+    chart && n >= 15 ? atr(chart.highs, chart.lows, chart.closes, 14) : null;
 
-  const latestMacd  = macdData?.macd[n - 1];
-  const latestHist  = macdData?.histogram[n - 1];
-  const latestRsi   = rsiData?.[n - 1];
-  const latestMa20  = ma20Data?.[n - 1];
-  const latestMa50  = ma50Data?.[n - 1];
+  const latestMacd = macdData?.macd[n - 1];
+  const latestHist = macdData?.histogram[n - 1];
+  const latestRsi = rsiData?.[n - 1];
+  const latestMa20 = ma20Data?.[n - 1];
+  const latestMa50 = ma50Data?.[n - 1];
   const latestMa200 = ma200Data?.[n - 1];
-  const latestAtr   = atrData?.[n - 1];
-  const chartOverlays = chart ? [
-    { label: "SMA 20", values: sma(chart.closes, 20), color: "#c084fc" },
-    { label: "SMA 50", values: sma(chart.closes, 50), color: "#a3e635" },
-    { label: "SMA 200", values: sma(chart.closes, 200), color: "#38bdf8" },
-  ] : [];
-  const visibleChartOverlays = chartOverlays.filter((overlay) => overlay.values.some((value) => Number.isFinite(value)));
+  const latestAtr = atrData?.[n - 1];
+  const chartOverlays = chart
+    ? [
+        { label: "SMA 20", values: sma(chart.closes, 20), color: "#c084fc" },
+        { label: "SMA 50", values: sma(chart.closes, 50), color: "#a3e635" },
+        { label: "SMA 200", values: sma(chart.closes, 200), color: "#38bdf8" },
+      ]
+    : [];
+  const visibleChartOverlays = chartOverlays.filter((overlay) =>
+    overlay.values.some((value) => Number.isFinite(value)),
+  );
 
   const chartPrices = chart?.closes.filter((close) => close > 0) ?? [];
   const chartStartPrice = chartPrices[0];
@@ -275,15 +356,18 @@ export default function StockDetailScreen() {
     chartPerformance == null
       ? colors.mutedForeground
       : chartPerformance >= 0
-      ? colors.up
-      : colors.down;
+        ? colors.up
+        : colors.down;
 
   const volatility = (() => {
     if (!chart || n < 10) return null;
-    const returns = chart.closes.slice(-20).map((c, i, arr) => {
-      if (i === 0) return 0;
-      return Math.abs((c - arr[i - 1]) / arr[i - 1]);
-    }).slice(1);
+    const returns = chart.closes
+      .slice(-20)
+      .map((c, i, arr) => {
+        if (i === 0) return 0;
+        return Math.abs((c - arr[i - 1]) / arr[i - 1]);
+      })
+      .slice(1);
     const avg = returns.reduce((a, b) => a + b, 0) / returns.length;
     return avg * 100;
   })();
@@ -296,45 +380,82 @@ export default function StockDetailScreen() {
       analysis.signal === "buy"
         ? `${symbol} teknik tabloda ALIM tarafında: ${analysis.reasons.length} gösterge fiyatın lehine.`
         : analysis.signal === "sell"
-        ? `${symbol} teknik tabloda SATIM baskısı altında: ${analysis.reasons.length} gösterge fiyatın aleyhine.`
-        : `${symbol} şu an nötr bölgede, göstergeler net bir yön vermiyor.`;
+          ? `${symbol} teknik tabloda SATIM baskısı altında: ${analysis.reasons.length} gösterge fiyatın aleyhine.`
+          : `${symbol} şu an nötr bölgede, göstergeler net bir yön vermiyor.`;
     lines.push(signalLine);
 
     if (latestMa20 != null && latestMa50 != null) {
       const gapPct = ((latestMa20 - latestMa50) / latestMa50) * 100;
       if (Math.abs(gapPct) < 0.3) {
-        lines.push(`20 ve 50 günlük ortalamalar birbirine çok yakın (%${Math.abs(gapPct).toFixed(2)} fark), yön arayışı sürüyor.`);
+        lines.push(
+          `20 ve 50 günlük ortalamalar birbirine çok yakın (%${Math.abs(gapPct).toFixed(2)} fark), yön arayışı sürüyor.`,
+        );
       } else if (latestMa20 > latestMa50) {
-        lines.push(`20 günlük ortalama, 50 günlüğün %${gapPct.toFixed(1)} üzerinde; orta vadeli trend yukarı eğilimli.`);
+        lines.push(
+          `20 günlük ortalama, 50 günlüğün %${gapPct.toFixed(1)} üzerinde; orta vadeli trend yukarı eğilimli.`,
+        );
       } else {
-        lines.push(`20 günlük ortalama, 50 günlüğün %${Math.abs(gapPct).toFixed(1)} altında; orta vadeli trend baskı altında.`);
+        lines.push(
+          `20 günlük ortalama, 50 günlüğün %${Math.abs(gapPct).toFixed(1)} altında; orta vadeli trend baskı altında.`,
+        );
       }
       if (price > latestMa20 && price > latestMa50) {
-        lines.push(`Fiyat her iki ortalamanın da üzerinde seyrediyor, kısa vadeli momentum güçlü.`);
+        lines.push(
+          `Fiyat her iki ortalamanın da üzerinde seyrediyor, kısa vadeli momentum güçlü.`,
+        );
       } else if (price < latestMa20 && price < latestMa50) {
-        lines.push(`Fiyat her iki ortalamanın da altında, kısa vadeli momentum zayıf.`);
+        lines.push(
+          `Fiyat her iki ortalamanın da altında, kısa vadeli momentum zayıf.`,
+        );
       }
     }
 
     if (latestRsi != null) {
-      if (latestRsi >= 70) lines.push(`RSI ${latestRsi.toFixed(0)} ile aşırı alım bölgesinde, kısa vadeli geri çekilme riski artabilir.`);
-      else if (latestRsi <= 30) lines.push(`RSI ${latestRsi.toFixed(0)} ile aşırı satım bölgesinde, tepki alımları gelebilir.`);
-      else if (latestRsi > 55) lines.push(`RSI ${latestRsi.toFixed(0)} seviyesinde, alıcı baskısı hafif üstün.`);
-      else if (latestRsi < 45) lines.push(`RSI ${latestRsi.toFixed(0)} seviyesinde, satıcı baskısı hafif üstün.`);
+      if (latestRsi >= 70)
+        lines.push(
+          `RSI ${latestRsi.toFixed(0)} ile aşırı alım bölgesinde, kısa vadeli geri çekilme riski artabilir.`,
+        );
+      else if (latestRsi <= 30)
+        lines.push(
+          `RSI ${latestRsi.toFixed(0)} ile aşırı satım bölgesinde, tepki alımları gelebilir.`,
+        );
+      else if (latestRsi > 55)
+        lines.push(
+          `RSI ${latestRsi.toFixed(0)} seviyesinde, alıcı baskısı hafif üstün.`,
+        );
+      else if (latestRsi < 45)
+        lines.push(
+          `RSI ${latestRsi.toFixed(0)} seviyesinde, satıcı baskısı hafif üstün.`,
+        );
     }
 
     if (latestMacd != null && latestHist != null) {
-      if (latestHist > 0 && latestMacd > 0) lines.push(`MACD pozitif bölgede ve histogram artıda, momentum yukarı yönlü.`);
-      else if (latestHist < 0 && latestMacd < 0) lines.push(`MACD negatif bölgede ve histogram ekside, momentum aşağı yönlü.`);
-      else if (latestHist > 0) lines.push(`MACD histogramı pozitife döndü, olası bir toparlanma sinyali.`);
-      else if (latestHist < 0) lines.push(`MACD histogramı negatife döndü, momentum kayboluyor.`);
+      if (latestHist > 0 && latestMacd > 0)
+        lines.push(
+          `MACD pozitif bölgede ve histogram artıda, momentum yukarı yönlü.`,
+        );
+      else if (latestHist < 0 && latestMacd < 0)
+        lines.push(
+          `MACD negatif bölgede ve histogram ekside, momentum aşağı yönlü.`,
+        );
+      else if (latestHist > 0)
+        lines.push(
+          `MACD histogramı pozitife döndü, olası bir toparlanma sinyali.`,
+        );
+      else if (latestHist < 0)
+        lines.push(`MACD histogramı negatife döndü, momentum kayboluyor.`);
     }
 
     if (latestAtr != null && price > 0) {
       const atrPct = (latestAtr / price) * 100;
-      if (atrPct > 3) lines.push(`ATR bazlı volatilite yüksek (%${atrPct.toFixed(1)}), pozisyon boyutunu buna göre ayarlayın.`);
+      if (atrPct > 3)
+        lines.push(
+          `ATR bazlı volatilite yüksek (%${atrPct.toFixed(1)}), pozisyon boyutunu buna göre ayarlayın.`,
+        );
     } else if (volatility != null && volatility > 2) {
-      lines.push(`Son 20 günün ortalama günlük hareketi %${volatility.toFixed(1)}, dalgalanma yüksek.`);
+      lines.push(
+        `Son 20 günün ortalama günlük hareketi %${volatility.toFixed(1)}, dalgalanma yüksek.`,
+      );
     }
 
     return lines.filter(Boolean).join("\n");
@@ -342,44 +463,83 @@ export default function StockDetailScreen() {
 
   const activeAlerts = symbolAlerts.filter((a) => !a.triggered);
   const fundamentals = stockOverview?.fundamentals;
-  const formatRatio = (value: number | null | undefined, suffix = "") => value == null ? "—" : `${value.toFixed(2)}${suffix}`;
-  const formatRatioPercent = (value: number | null | undefined) => value == null ? "—" : `${(value * 100).toFixed(1)}%`;
-  const targetUpside = price != null && fundamentals?.targetMeanPrice != null && price > 0
-    ? ((fundamentals.targetMeanPrice - price) / price) * 100
-    : null;
+  const formatRatio = (value: number | null | undefined, suffix = "") =>
+    value == null ? "—" : `${value.toFixed(2)}${suffix}`;
+  const formatRatioPercent = (value: number | null | undefined) =>
+    value == null ? "—" : `${(value * 100).toFixed(1)}%`;
+  const targetUpside =
+    price != null && fundamentals?.targetMeanPrice != null && price > 0
+      ? ((fundamentals.targetMeanPrice - price) / price) * 100
+      : null;
   const ratioParts = [
-    fundamentals?.trailingPE != null ? `F/K ${fundamentals.trailingPE.toFixed(2)}` : null,
-    fundamentals?.priceToBook != null ? `PD/DD ${fundamentals.priceToBook.toFixed(2)}` : null,
-    fundamentals?.returnOnEquity != null ? `ROE ${(fundamentals.returnOnEquity * 100).toFixed(1)}%` : null,
-    fundamentals?.debtToEquity != null ? `Borç/özsermaye ${fundamentals.debtToEquity.toFixed(1)}` : null,
+    fundamentals?.trailingPE != null
+      ? `F/K ${fundamentals.trailingPE.toFixed(2)}`
+      : null,
+    fundamentals?.priceToBook != null
+      ? `PD/DD ${fundamentals.priceToBook.toFixed(2)}`
+      : null,
+    fundamentals?.returnOnEquity != null
+      ? `ROE ${(fundamentals.returnOnEquity * 100).toFixed(1)}%`
+      : null,
+    fundamentals?.debtToEquity != null
+      ? `Borç/özsermaye ${fundamentals.debtToEquity.toFixed(1)}`
+      : null,
   ].filter((part): part is string => part != null);
-  const hasFundamentalData = ratioParts.length > 0 || fundamentals?.priceToSales != null || fundamentals?.enterpriseToEbitda != null;
-  const valuationTitle = targetUpside != null
-    ? targetUpside >= 15
-      ? "Hedef fiyata göre iskontolu görünüyor"
-      : targetUpside <= -15
-        ? "Hedef fiyata göre primli görünüyor"
-        : "Hedef fiyata göre dengeli görünüyor"
-    : fundamentals?.priceToBook != null && fundamentals.priceToBook < 1
-      ? "PD/DD düşük; tek başına ucuzluk kanıtı değil"
-      : fundamentals?.priceToBook != null && fundamentals.priceToBook > 3
-        ? "PD/DD yüksek; primli değerleme riski var"
-        : hasFundamentalData
-          ? "Temel oranlar mevcut; sektörle birlikte değerlendirilmeli"
-          : "Göreli değerleme için veri bekleniyor";
-  const valuationText = targetUpside != null
-    ? `${ratioParts.length > 0 ? `${ratioParts.join(" · ")}. ` : ""}Analist ortalama hedefi ₺${fundamentals?.targetMeanPrice?.toFixed(2)}; mevcut fiyata göre ${targetUpside >= 0 ? "+" : ""}${targetUpside.toFixed(1)}% fark var. Bu hedef garanti değildir ve analist kapsamı ${fundamentals?.analystCount ?? "bilinmiyor"} kişi olabilir.`
-    : hasFundamentalData
-      ? `${ratioParts.join(" · ") || "Ek temel oranlar mevcut"}. Ucuz/pahalı yorumu için sektör medyanı, borçluluk, kârlılık ve finansal dönem birlikte değerlendirilmelidir.`
-      : "Temel oranlar bu kaynakta bulunamadı; bu nedenle ucuz veya pahalı hükmü verilmiyor.";
+  const hasFundamentalData =
+    ratioParts.length > 0 ||
+    fundamentals?.priceToSales != null ||
+    fundamentals?.enterpriseToEbitda != null;
+  const valuationTitle =
+    targetUpside != null
+      ? targetUpside >= 15
+        ? "Hedef fiyata göre iskontolu görünüyor"
+        : targetUpside <= -15
+          ? "Hedef fiyata göre primli görünüyor"
+          : "Hedef fiyata göre dengeli görünüyor"
+      : fundamentals?.priceToBook != null && fundamentals.priceToBook < 1
+        ? "PD/DD düşük; tek başına ucuzluk kanıtı değil"
+        : fundamentals?.priceToBook != null && fundamentals.priceToBook > 3
+          ? "PD/DD yüksek; primli değerleme riski var"
+          : hasFundamentalData
+            ? "Temel oranlar mevcut; sektörle birlikte değerlendirilmeli"
+            : "Göreli değerleme için veri bekleniyor";
+  const valuationText =
+    targetUpside != null
+      ? `${ratioParts.length > 0 ? `${ratioParts.join(" · ")}. ` : ""}Analist ortalama hedefi ₺${fundamentals?.targetMeanPrice?.toFixed(2)}; mevcut fiyata göre ${targetUpside >= 0 ? "+" : ""}${targetUpside.toFixed(1)}% fark var. Bu hedef garanti değildir ve analist kapsamı ${fundamentals?.analystCount ?? "bilinmiyor"} kişi olabilir.`
+      : hasFundamentalData
+        ? `${ratioParts.join(" · ") || "Ek temel oranlar mevcut"}. Ucuz/pahalı yorumu için sektör medyanı, borçluluk, kârlılık ve finansal dönem birlikte değerlendirilmelidir.`
+        : "Temel oranlar bu kaynakta bulunamadı; bu nedenle ucuz veya pahalı hükmü verilmiyor.";
 
   const sessionLabel =
-    session === "open" ? "Açık" :
-    session === "pre" ? "Açılış öncesi" :
-    session === "post" ? "Kapanış sonrası" : "Kapalı";
+    session === "open"
+      ? "Açık"
+      : session === "pre"
+        ? "Açılış öncesi"
+        : session === "post"
+          ? "Kapanış sonrası"
+          : "Kapalı";
+  const quoteFreshness = quote?.freshness ?? "unknown";
+  const quoteFreshnessLabel = quote
+    ? getFreshnessLabel(quoteFreshness)
+    : "Veri bekleniyor";
+  const quoteFreshnessWarning = quote
+    ? getFreshnessWarning(quoteFreshness)
+    : "Fiyat verisi alınamadı; karar için yeterli veri yok.";
+  const quoteFreshnessColor =
+    quoteFreshness === "fresh" || quoteFreshness === "closed_reference"
+      ? colors.up
+      : quoteFreshness === "slightly_delayed"
+        ? colors.neutral
+        : colors.down;
 
-  const rsiColor = latestRsi == null ? colors.mutedForeground :
-    latestRsi < 30 ? colors.up : latestRsi > 70 ? colors.down : colors.neutral;
+  const rsiColor =
+    latestRsi == null
+      ? colors.mutedForeground
+      : latestRsi < 30
+        ? colors.up
+        : latestRsi > 70
+          ? colors.down
+          : colors.neutral;
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <Stack.Screen
@@ -393,38 +553,68 @@ export default function StockDetailScreen() {
             <View style={styles.headerActions}>
               <Pressable
                 onPress={handleOpenAlarmModal}
-                style={({ pressed }) => [styles.headerAlarmBtn, pressed && { backgroundColor: colors.accent }]}
+                style={({ pressed }) => [
+                  styles.headerAlarmBtn,
+                  pressed && { backgroundColor: colors.accent },
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel={`${symbol ?? "Hisse"} fiyat alarmı kur`}
                 accessibilityHint="Bu hisse için en fazla 6 fiyat alarmı açar"
                 testID="stock-detail-alarm"
               >
-                <IconAlarmClock size={20} color={activeAlerts.length > 0 ? colors.primary : colors.mutedForeground} />
-                {activeAlerts.length > 0 && <Text style={[styles.headerAlarmCount, { color: colors.primary }]}>{activeAlerts.length}</Text>}
+                <IconAlarmClock
+                  size={20}
+                  color={
+                    activeAlerts.length > 0
+                      ? colors.primary
+                      : colors.mutedForeground
+                  }
+                />
+                {activeAlerts.length > 0 && (
+                  <Text
+                    style={[styles.headerAlarmCount, { color: colors.primary }]}
+                  >
+                    {activeAlerts.length}
+                  </Text>
+                )}
               </Pressable>
               <Pressable
                 onPress={handleToggleWatchlist}
                 style={({ pressed }) => [
                   styles.headerWatchBtn,
-                  { backgroundColor: watched ? `${colors.up}20` : "transparent" },
-                  pressed && { backgroundColor: watched ? `${colors.up}35` : colors.accent },
+                  {
+                    backgroundColor: watched ? `${colors.up}20` : "transparent",
+                  },
+                  pressed && {
+                    backgroundColor: watched ? `${colors.up}35` : colors.accent,
+                  },
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={watched ? "Takipten çıkar" : "Takibe al"}
                 accessibilityHint="Hisseyi takip listesine ekler veya çıkarır"
                 testID="stock-detail-watchlist"
               >
-                <IconCheckMark size={18} color={watched ? colors.up : colors.mutedForeground} />
+                <IconCheckMark
+                  size={18}
+                  color={watched ? colors.up : colors.mutedForeground}
+                />
               </Pressable>
               <Pressable
                 onPress={handleFav}
-                style={({ pressed }) => [styles.headerFavoriteBtn, pressed && { backgroundColor: colors.accent }]}
+                style={({ pressed }) => [
+                  styles.headerFavoriteBtn,
+                  pressed && { backgroundColor: colors.accent },
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel={`${symbol ?? "Hisse"} ${fav ? "favorilerden çıkar" : "favorilere ekle"}`}
                 accessibilityHint="Hisseyi Favoriler ekranına ekler veya çıkarır"
                 testID="stock-detail-favorite"
               >
-                <IconStar size={21} color={fav ? colors.primary : colors.mutedForeground} filled={fav} />
+                <IconStar
+                  size={21}
+                  color={fav ? colors.primary : colors.mutedForeground}
+                  filled={fav}
+                />
               </Pressable>
             </View>
           ),
@@ -438,48 +628,118 @@ export default function StockDetailScreen() {
         {/* Price Hero */}
         <View style={[styles.priceHero, { borderBottomColor: colors.border }]}>
           <View style={styles.priceLeft}>
-            <Text style={[styles.companyName, { color: colors.mutedForeground }]}>
+            <Text
+              style={[styles.companyName, { color: colors.mutedForeground }]}
+            >
               {meta?.name ?? symbol}
             </Text>
             <Text style={[styles.priceText, { color: colors.foreground }]}>
               {price != null ? `₺${price.toFixed(2)}` : "—"}
             </Text>
             <View style={styles.changeRow}>
-              <View style={[styles.changePill, { backgroundColor: `${changeColor}20` }]}>
+              <View
+                style={[
+                  styles.changePill,
+                  { backgroundColor: `${changeColor}20` },
+                ]}
+              >
                 <Text style={[styles.changeAbs, { color: changeColor }]}>
-                  {changeVal != null ? `${changeVal >= 0 ? "+" : ""}₺${changeVal.toFixed(2)}` : ""}
+                  {changeVal != null
+                    ? `${changeVal >= 0 ? "+" : ""}₺${changeVal.toFixed(2)}`
+                    : ""}
                 </Text>
                 <Text style={[styles.changePct, { color: changeColor }]}>
-                  {change != null ? ` (${change >= 0 ? "+" : ""}${change.toFixed(2)}%)` : ""}
+                  {change != null
+                    ? ` (${change >= 0 ? "+" : ""}${change.toFixed(2)}%)`
+                    : ""}
                 </Text>
               </View>
             </View>
           </View>
           <View style={styles.priceRight}>
             <View style={styles.sessionRow}>
-              <View style={[styles.sessionDot, {
-                backgroundColor: session === "open" ? colors.up : colors.mutedForeground
-              }]} />
-              <Text style={[styles.sessionText, { color: colors.mutedForeground }]}>{sessionLabel}</Text>
+              <View
+                style={[
+                  styles.sessionDot,
+                  {
+                    backgroundColor:
+                      session === "open" ? colors.up : colors.mutedForeground,
+                  },
+                ]}
+              />
+              <Text
+                style={[styles.sessionText, { color: colors.mutedForeground }]}
+              >
+                {sessionLabel}
+              </Text>
             </View>
+            <Text
+              style={[
+                styles.quoteFreshnessLabel,
+                { color: quoteFreshnessColor },
+              ]}
+            >
+              Veri: {quoteFreshnessLabel}
+            </Text>
+            <Text
+              style={[
+                styles.quoteFreshnessWarning,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              Kaynak {formatMarketTimestamp(quote?.marketTimestamp ?? null)}
+            </Text>
+            {quoteFreshnessWarning && quoteFreshness !== "fresh" && (
+              <Text
+                style={[
+                  styles.quoteFreshnessWarning,
+                  { color: quoteFreshnessColor },
+                ]}
+              >
+                {quoteFreshnessWarning}
+              </Text>
+            )}
           </View>
         </View>
 
         {/* Chart controls: mode buttons stay above the compact range row */}
-        <View style={[styles.chartModeRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          <Text style={[styles.chartModeLabel, { color: colors.mutedForeground }]}>Grafik görünümü</Text>
+        <View
+          style={[
+            styles.chartModeRow,
+            { backgroundColor: colors.card, borderBottomColor: colors.border },
+          ]}
+        >
+          <Text
+            style={[styles.chartModeLabel, { color: colors.mutedForeground }]}
+          >
+            Grafik görünümü
+          </Text>
           <View style={styles.chartModeActions}>
             <Pressable
-              onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")}
-              style={[styles.chartTypeBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+              onPress={() =>
+                setChartType((type) => (type === "candle" ? "line" : "candle"))
+              }
+              style={[
+                styles.chartTypeBtn,
+                { borderColor: colors.border, backgroundColor: colors.card },
+              ]}
               accessibilityRole="button"
-              accessibilityLabel={chartType === "candle" ? "Çizgi grafiğe geç" : "Mum grafiğe geç"}
+              accessibilityLabel={
+                chartType === "candle" ? "Çizgi grafiğe geç" : "Mum grafiğe geç"
+              }
             >
-              {chartType === "candle" ? <IconLineChart color={colors.up} size={18} /> : <IconCandle color={colors.up} size={18} />}
+              {chartType === "candle" ? (
+                <IconLineChart color={colors.up} size={18} />
+              ) : (
+                <IconCandle color={colors.up} size={18} />
+              )}
             </Pressable>
             <Pressable
               onPress={() => setShowFullscreenChart(true)}
-              style={[styles.chartExpandBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+              style={[
+                styles.chartExpandBtn,
+                { borderColor: colors.border, backgroundColor: colors.card },
+              ]}
               accessibilityRole="button"
               accessibilityLabel="Grafiği tam ekran aç"
             >
@@ -489,20 +749,30 @@ export default function StockDetailScreen() {
         </View>
 
         {/* Range Selector */}
-        <View style={[styles.rangeRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <View
+          style={[
+            styles.rangeRow,
+            { backgroundColor: colors.card, borderBottomColor: colors.border },
+          ]}
+        >
           {RANGES.map(({ key, label }) => (
             <Pressable
               key={key}
               style={[
                 styles.rangeBtn,
-                range === key && [styles.rangeBtnActive, { backgroundColor: colors.primary }],
+                range === key && [
+                  styles.rangeBtnActive,
+                  { backgroundColor: colors.primary },
+                ],
               ]}
               onPress={() => handleRangeChange(key)}
             >
-              <Text style={[
-                styles.rangeBtnText,
-                { color: range === key ? "#fff" : colors.mutedForeground },
-              ]}>
+              <Text
+                style={[
+                  styles.rangeBtnText,
+                  { color: range === key ? "#fff" : colors.mutedForeground },
+                ]}
+              >
                 {label}
               </Text>
             </Pressable>
@@ -528,113 +798,343 @@ export default function StockDetailScreen() {
           />
         ) : (
           <View style={styles.chartLoader}>
-            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Grafik verisi yok</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+              Grafik verisi yok
+            </Text>
           </View>
         )}
         {visibleChartOverlays.length > 0 && (
           <View style={styles.overlayLegend}>
             {visibleChartOverlays.map((overlay) => (
-              <View key={`normal-${overlay.label}`} style={styles.overlayLegendItem}>
-                <View style={[styles.overlayDot, { backgroundColor: overlay.color }]} />
-                <Text style={[styles.overlayLegendText, { color: colors.mutedForeground }]}>{overlay.label}</Text>
+              <View
+                key={`normal-${overlay.label}`}
+                style={styles.overlayLegendItem}
+              >
+                <View
+                  style={[
+                    styles.overlayDot,
+                    { backgroundColor: overlay.color },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.overlayLegendText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {overlay.label}
+                </Text>
               </View>
             ))}
           </View>
         )}
 
         {/* Selected range performance */}
-        {chartPerformance != null && chartStartPrice != null && chartEndPrice != null && (
-          <View style={[styles.performanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View>
-              <Text style={[styles.performanceLabel, { color: colors.mutedForeground }]}>
-                {RANGES.find((item) => item.key === range)?.label ?? range} performansı
-              </Text>
-              <Text style={[styles.performanceSub, { color: colors.mutedForeground }]}>
-                Başlangıç ₺{chartStartPrice.toFixed(2)} · Son ₺{chartEndPrice.toFixed(2)}
-              </Text>
+        {chartPerformance != null &&
+          chartStartPrice != null &&
+          chartEndPrice != null && (
+            <View
+              style={[
+                styles.performanceCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <View>
+                <Text
+                  style={[
+                    styles.performanceLabel,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {RANGES.find((item) => item.key === range)?.label ?? range}{" "}
+                  performansı
+                </Text>
+                <Text
+                  style={[
+                    styles.performanceSub,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Başlangıç ₺{chartStartPrice.toFixed(2)} · Son ₺
+                  {chartEndPrice.toFixed(2)}
+                </Text>
+              </View>
+              <View style={styles.performanceValueWrap}>
+                <Text
+                  style={[
+                    styles.performanceAmount,
+                    { color: chartPerformanceColor },
+                  ]}
+                >
+                  {chartEndPrice - chartStartPrice >= 0 ? "+" : ""}₺
+                  {(chartEndPrice - chartStartPrice).toFixed(2)}
+                </Text>
+                <Text
+                  style={[
+                    styles.performancePercent,
+                    { color: chartPerformanceColor },
+                  ]}
+                >
+                  {chartPerformance >= 0 ? "+" : ""}
+                  {chartPerformance.toFixed(2)}%
+                </Text>
+              </View>
             </View>
-            <View style={styles.performanceValueWrap}>
-              <Text style={[styles.performanceAmount, { color: chartPerformanceColor }]}>
-                {chartEndPrice - chartStartPrice >= 0 ? "+" : ""}₺{(chartEndPrice - chartStartPrice).toFixed(2)}
-              </Text>
-              <Text style={[styles.performancePercent, { color: chartPerformanceColor }]}>
-                {chartPerformance >= 0 ? "+" : ""}{chartPerformance.toFixed(2)}%
-              </Text>
-            </View>
-          </View>
-        )}
+          )}
 
         {/* Price Info */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Fiyat Bilgisi</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Fiyat Bilgisi
+          </Text>
           <View style={styles.statsGrid}>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.statCardLabel, { color: colors.mutedForeground }]}>Açılış</Text>
-              <Text style={[styles.statCardValue, { color: colors.foreground }]}>₺{formatNum(quote?.regularMarketOpen)}</Text>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statCardLabel,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Açılış
+              </Text>
+              <Text
+                style={[styles.statCardValue, { color: colors.foreground }]}
+              >
+                ₺{formatNum(quote?.regularMarketOpen)}
+              </Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.statCardLabel, { color: colors.mutedForeground }]}>Önceki Kapanış</Text>
-              <Text style={[styles.statCardValue, { color: colors.foreground }]}>₺{formatNum(quote?.regularMarketPreviousClose)}</Text>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statCardLabel,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Önceki Kapanış
+              </Text>
+              <Text
+                style={[styles.statCardValue, { color: colors.foreground }]}
+              >
+                ₺{formatNum(quote?.regularMarketPreviousClose)}
+              </Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.statCardLabel, { color: colors.mutedForeground }]}>Gün Yüksek</Text>
-              <Text style={[styles.statCardValue, { color: colors.up }]}>₺{formatNum(quote?.regularMarketDayHigh)}</Text>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statCardLabel,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Gün Yüksek
+              </Text>
+              <Text style={[styles.statCardValue, { color: colors.up }]}>
+                ₺{formatNum(quote?.regularMarketDayHigh)}
+              </Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.statCardLabel, { color: colors.mutedForeground }]}>Gün Düşük</Text>
-              <Text style={[styles.statCardValue, { color: colors.down }]}>₺{formatNum(quote?.regularMarketDayLow)}</Text>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statCardLabel,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Gün Düşük
+              </Text>
+              <Text style={[styles.statCardValue, { color: colors.down }]}>
+                ₺{formatNum(quote?.regularMarketDayLow)}
+              </Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.statCardLabel, { color: colors.mutedForeground }]}>52H Yüksek</Text>
-              <Text style={[styles.statCardValue, { color: colors.up }]}>₺{formatNum(quote?.fiftyTwoWeekHigh)}</Text>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statCardLabel,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                52H Yüksek
+              </Text>
+              <Text style={[styles.statCardValue, { color: colors.up }]}>
+                ₺{formatNum(quote?.fiftyTwoWeekHigh)}
+              </Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.statCardLabel, { color: colors.mutedForeground }]}>52H Düşük</Text>
-              <Text style={[styles.statCardValue, { color: colors.down }]}>₺{formatNum(quote?.fiftyTwoWeekLow)}</Text>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statCardLabel,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                52H Düşük
+              </Text>
+              <Text style={[styles.statCardValue, { color: colors.down }]}>
+                ₺{formatNum(quote?.fiftyTwoWeekLow)}
+              </Text>
             </View>
           </View>
           <StatRow label="Piyasa Değeri" value={formatBig(quote?.marketCap)} />
-          <StatRow label="Günlük Hacim"  value={formatBig(quote?.regularMarketVolume)} />
+          <StatRow
+            label="Günlük Hacim"
+            value={formatBig(quote?.regularMarketVolume)}
+          />
         </View>
 
         {/* Technical Indicators */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Teknik Analiz</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Teknik Analiz
+          </Text>
           {loadingChart ? (
             <ActivityIndicator color={colors.primary} style={{ margin: 20 }} />
           ) : (
             <>
               <View style={styles.indGrid}>
                 {latestRsi != null && (
-                  <IndicatorCard label="RSI" subLabel="Aşırı Al/Sat" value={latestRsi} min={0} max={100} color={rsiColor} onInfoPress={() => setInfoKey("RSI")} />
+                  <IndicatorCard
+                    label="RSI"
+                    subLabel="Aşırı Al/Sat"
+                    value={latestRsi}
+                    min={0}
+                    max={100}
+                    color={rsiColor}
+                    onInfoPress={() => setInfoKey("RSI")}
+                  />
                 )}
               </View>
               <Text style={[styles.indHint, { color: colors.mutedForeground }]}>
-                Göstergeler birlikte değerlendirilir; hiçbiri tek başına kesin sinyal sayılmaz.
+                Göstergeler birlikte değerlendirilir; hiçbiri tek başına kesin
+                sinyal sayılmaz.
               </Text>
 
-              <View style={[styles.maRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View
+                style={[
+                  styles.maRow,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
                 {[
-                  { label: "MA 20", val: latestMa20, sub: price != null && latestMa20 != null ? (price > latestMa20 ? "Üstünde" : "Altında") : "" },
-                  { label: "MA 50", val: latestMa50, sub: price != null && latestMa50 != null ? (price > latestMa50 ? "Üstünde" : "Altında") : "" },
-                  { label: "MA 200", val: latestMa200, sub: price != null && latestMa200 != null ? (price > latestMa200 ? "Üstünde" : "Altında") : "" },
-                  { label: "MACD", val: latestMacd, sub: `Hist: ${latestHist?.toFixed(2) ?? "—"}`, isMacd: true },
-                  { label: "ATR", val: latestAtr, sub: "Volatilite", isAtr: true },
+                  {
+                    label: "MA 20",
+                    val: latestMa20,
+                    sub:
+                      price != null && latestMa20 != null
+                        ? price > latestMa20
+                          ? "Üstünde"
+                          : "Altında"
+                        : "",
+                  },
+                  {
+                    label: "MA 50",
+                    val: latestMa50,
+                    sub:
+                      price != null && latestMa50 != null
+                        ? price > latestMa50
+                          ? "Üstünde"
+                          : "Altında"
+                        : "",
+                  },
+                  {
+                    label: "MA 200",
+                    val: latestMa200,
+                    sub:
+                      price != null && latestMa200 != null
+                        ? price > latestMa200
+                          ? "Üstünde"
+                          : "Altında"
+                        : "",
+                  },
+                  {
+                    label: "MACD",
+                    val: latestMacd,
+                    sub: `Hist: ${latestHist?.toFixed(2) ?? "—"}`,
+                    isMacd: true,
+                  },
+                  {
+                    label: "ATR",
+                    val: latestAtr,
+                    sub: "Volatilite",
+                    isAtr: true,
+                  },
                 ].map((item, idx) => {
                   if (item.val == null) return null;
                   let valColor = colors.foreground;
-                  if (item.isMacd) valColor = latestHist != null ? (latestHist > 0 ? colors.up : colors.down) : colors.foreground;
-                  else if (item.isAtr) valColor = price != null && item.val / price > 0.03 ? colors.neutral : colors.foreground;
-                  else if (price != null) valColor = price > item.val ? colors.up : colors.down;
+                  if (item.isMacd)
+                    valColor =
+                      latestHist != null
+                        ? latestHist > 0
+                          ? colors.up
+                          : colors.down
+                        : colors.foreground;
+                  else if (item.isAtr)
+                    valColor =
+                      price != null && item.val / price > 0.03
+                        ? colors.neutral
+                        : colors.foreground;
+                  else if (price != null)
+                    valColor = price > item.val ? colors.up : colors.down;
 
                   return (
-                    <View key={item.label} style={[styles.maItem, idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+                    <View
+                      key={item.label}
+                      style={[
+                        styles.maItem,
+                        idx > 0 && {
+                          borderTopWidth: StyleSheet.hairlineWidth,
+                          borderTopColor: colors.border,
+                        },
+                      ]}
+                    >
                       <View>
-                        <Text style={[styles.maLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
-                        <Text style={[styles.maSub, { color: colors.mutedForeground }]}>{item.sub}</Text>
+                        <Text
+                          style={[
+                            styles.maLabel,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.maSub,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {item.sub}
+                        </Text>
                       </View>
                       <Text style={[styles.maValue, { color: valColor }]}>
-                        {item.isMacd ? item.val.toFixed(2) : `₺${item.val.toFixed(2)}`}
+                        {item.isMacd
+                          ? item.val.toFixed(2)
+                          : `₺${item.val.toFixed(2)}`}
                       </Text>
                     </View>
                   );
@@ -654,81 +1154,231 @@ export default function StockDetailScreen() {
 
         {/* Relative valuation */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Temel / Göreli Değerleme</Text>
-          <View style={[styles.valuationCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.valuationTitle, { color: targetUpside != null && targetUpside >= 15 ? colors.up : targetUpside != null && targetUpside <= -15 ? colors.down : colors.foreground }]}>{valuationTitle}</Text>
-            <Text style={[styles.valuationText, { color: colors.mutedForeground }]}>{loadingOverview ? "Temel oranlar yükleniyor…" : valuationText}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Temel / Göreli Değerleme
+          </Text>
+          <View
+            style={[
+              styles.valuationCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Text
+              style={[
+                styles.valuationTitle,
+                {
+                  color:
+                    targetUpside != null && targetUpside >= 15
+                      ? colors.up
+                      : targetUpside != null && targetUpside <= -15
+                        ? colors.down
+                        : colors.foreground,
+                },
+              ]}
+            >
+              {valuationTitle}
+            </Text>
+            <Text
+              style={[styles.valuationText, { color: colors.mutedForeground }]}
+            >
+              {loadingOverview ? "Temel oranlar yükleniyor…" : valuationText}
+            </Text>
             <View style={styles.fundamentalGrid}>
-              <StatRow label="F/K" value={formatRatio(fundamentals?.trailingPE)} />
-              <StatRow label="İleri F/K" value={formatRatio(fundamentals?.forwardPE)} />
-              <StatRow label="PD/DD" value={formatRatio(fundamentals?.priceToBook)} />
-              <StatRow label="PD/S" value={formatRatio(fundamentals?.priceToSales)} />
-              <StatRow label="Özsermaye kârlılığı" value={formatRatioPercent(fundamentals?.returnOnEquity)} />
-              <StatRow label="Borç/Özsermaye" value={formatRatio(fundamentals?.debtToEquity)} />
+              <StatRow
+                label="F/K"
+                value={formatRatio(fundamentals?.trailingPE)}
+              />
+              <StatRow
+                label="İleri F/K"
+                value={formatRatio(fundamentals?.forwardPE)}
+              />
+              <StatRow
+                label="PD/DD"
+                value={formatRatio(fundamentals?.priceToBook)}
+              />
+              <StatRow
+                label="PD/S"
+                value={formatRatio(fundamentals?.priceToSales)}
+              />
+              <StatRow
+                label="Özsermaye kârlılığı"
+                value={formatRatioPercent(fundamentals?.returnOnEquity)}
+              />
+              <StatRow
+                label="Borç/Özsermaye"
+                value={formatRatio(fundamentals?.debtToEquity)}
+              />
             </View>
-            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>F/K ve PD/DD gibi oranlar kaynakta bulunamazsa “—” gösterilir; sektör karşılaştırması olmadan kesin ucuz/pahalı kararı verilmez.</Text>
-            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>Kaynak: {stockOverview?.source ?? "Overview verisi bekleniyor"}{fundamentals?.asOf ? ` · Finansal dönem: ${fundamentals.asOf}` : ""}</Text>
+            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>
+              F/K ve PD/DD gibi oranlar kaynakta bulunamazsa “—” gösterilir;
+              sektör karşılaştırması olmadan kesin ucuz/pahalı kararı verilmez.
+            </Text>
+            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>
+              Kaynak: {stockOverview?.source ?? "Overview verisi bekleniyor"}
+              {fundamentals?.asOf
+                ? ` · Finansal dönem: ${fundamentals.asOf}`
+                : ""}
+            </Text>
           </View>
           {tradingViewUrl && (
             <Pressable
               onPress={() => {
                 void Linking.openURL(tradingViewUrl).catch(() => {
-                  Alert.alert("Bağlantı açılamadı", "TradingView sayfası açılamadı. İnternet bağlantınızı kontrol edin.");
+                  Alert.alert(
+                    "Bağlantı açılamadı",
+                    "TradingView sayfası açılamadı. İnternet bağlantınızı kontrol edin.",
+                  );
                 });
               }}
-              style={({ pressed }) => [styles.externalLinkBtn, { backgroundColor: colors.secondary, borderColor: colors.border }, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.externalLinkBtn,
+                {
+                  backgroundColor: colors.secondary,
+                  borderColor: colors.border,
+                },
+                pressed && { opacity: 0.7 },
+              ]}
               accessibilityRole="button"
               accessibilityLabel={`${symbolText} için TradingView finansal oranlarını aç`}
             >
-              <Text style={[styles.externalLinkText, { color: colors.primary }]}>TradingView’da temel analizi aç</Text>
-              <Text style={[styles.externalLinkHint, { color: colors.mutedForeground }]}>Oranlar ve finansal tablolar TradingView’da görüntülenir.</Text>
+              <Text
+                style={[styles.externalLinkText, { color: colors.primary }]}
+              >
+                TradingView’da temel analizi aç
+              </Text>
+              <Text
+                style={[
+                  styles.externalLinkHint,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Oranlar ve finansal tablolar TradingView’da görüntülenir.
+              </Text>
             </Pressable>
           )}
         </View>
 
         {/* Hisse-specific morning report */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Hisseye Özel Sabah Raporu</Text>
-          <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.reportText, { color: colors.mutedForeground }]}>{morningReport}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Hisseye Özel Sabah Raporu
+          </Text>
+          <View
+            style={[
+              styles.reportCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Text
+              style={[styles.reportText, { color: colors.mutedForeground }]}
+            >
+              {morningReport}
+            </Text>
           </View>
         </View>
 
         {/* Stock-specific news */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Hisse Haberleri</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Hisse Haberleri
+          </Text>
           {loadingOverview ? (
             <ActivityIndicator color={colors.primary} style={{ margin: 18 }} />
           ) : stockOverview?.news.length ? (
-            <View style={[styles.stockNewsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View
+              style={[
+                styles.stockNewsCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
               {stockOverview.news.map((item, index) => (
-                <Pressable key={`${item.title}-${index}`} disabled={!item.link} onPress={() => item.link && Linking.openURL(item.link)} style={[styles.stockNewsRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-                  <View style={[styles.newsDot, { backgroundColor: colors.primary }]} />
+                <Pressable
+                  key={`${item.title}-${index}`}
+                  disabled={!item.link}
+                  onPress={() => item.link && Linking.openURL(item.link)}
+                  style={[
+                    styles.stockNewsRow,
+                    index > 0 && {
+                      borderTopWidth: StyleSheet.hairlineWidth,
+                      borderTopColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.newsDot,
+                      { backgroundColor: colors.primary },
+                    ]}
+                  />
                   <View style={styles.newsCopy}>
-                    <Text style={[styles.newsTitle, { color: colors.foreground }]} numberOfLines={3}>{item.title}</Text>
-                    <Text style={[styles.newsMeta, { color: colors.mutedForeground }]}>{item.publisher || "Kaynak belirtilmedi"}{item.providerPublishTime > 0 ? ` · ${new Date(item.providerPublishTime * 1000).toLocaleDateString("tr-TR")}` : ""}</Text>
+                    <Text
+                      style={[styles.newsTitle, { color: colors.foreground }]}
+                      numberOfLines={3}
+                    >
+                      {item.title}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.newsMeta,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      {item.publisher || "Kaynak belirtilmedi"}
+                      {item.providerPublishTime > 0
+                        ? ` · ${new Date(item.providerPublishTime * 1000).toLocaleDateString("tr-TR")}`
+                        : ""}
+                    </Text>
                   </View>
                 </Pressable>
               ))}
             </View>
           ) : (
-            <Text style={[styles.noNewsText, { color: colors.mutedForeground }]}>Bu hisse için kaynakta doğrulanmış haber bulunamadı.</Text>
+            <Text
+              style={[styles.noNewsText, { color: colors.mutedForeground }]}
+            >
+              Bu hisse için kaynakta doğrulanmış haber bulunamadı.
+            </Text>
           )}
         </View>
 
         {/* Active Alerts */}
         {activeAlerts.length > 0 && (
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Aktif Alarmlar</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              Aktif Alarmlar
+            </Text>
             {activeAlerts.map((a) => (
-              <View key={a.id} style={[styles.alertChip, { backgroundColor: `${colors.neutral}15`, borderColor: `${colors.neutral}30` }]}>
+              <View
+                key={a.id}
+                style={[
+                  styles.alertChip,
+                  {
+                    backgroundColor: `${colors.neutral}15`,
+                    borderColor: `${colors.neutral}30`,
+                  },
+                ]}
+              >
                 <IconNotifications color={colors.neutral} size={13} />
-                <Text style={[styles.alertChipText, { color: colors.mutedForeground }]}>
-                  {a.alertType === "tp" ? "Kâr al" :
-                   a.alertType === "sl" ? "Zarar kes" :
-                   a.alertType === "above" ? "Üstüne çıkınca" : "Altına düşünce"}: ₺{a.targetPrice.toFixed(2)}
+                <Text
+                  style={[
+                    styles.alertChipText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {a.alertType === "tp"
+                    ? "Kâr al"
+                    : a.alertType === "sl"
+                      ? "Zarar kes"
+                      : a.alertType === "above"
+                        ? "Üstüne çıkınca"
+                        : "Altına düşünce"}
+                  : ₺{a.targetPrice.toFixed(2)}
                 </Text>
-                <Pressable onPress={() => handleRemoveAlarm(a.id)} hitSlop={10} style={styles.alertDeleteBtn}>
+                <Pressable
+                  onPress={() => handleRemoveAlarm(a.id)}
+                  hitSlop={10}
+                  style={styles.alertDeleteBtn}
+                >
                   <IconTrash color={colors.mutedForeground} size={14} />
                 </Pressable>
               </View>
@@ -737,48 +1387,125 @@ export default function StockDetailScreen() {
         )}
       </ScrollView>
 
-
-
       {/* ── Fullscreen chart modal ── */}
       <Modal
         visible={showFullscreenChart}
         animationType="slide"
         onRequestClose={() => setShowFullscreenChart(false)}
       >
-        <View style={[styles.fullscreenChartRoot, { backgroundColor: colors.background, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
+        <View
+          style={[
+            styles.fullscreenChartRoot,
+            {
+              backgroundColor: colors.background,
+              paddingTop: insets.top + 8,
+              paddingBottom: insets.bottom + 8,
+            },
+          ]}
+        >
           <View style={styles.fullscreenHeader}>
             <View>
-              <Text style={[styles.fullscreenTitle, { color: colors.foreground }]}>{symbolText}</Text>
-              <Text style={[styles.fullscreenSubtitle, { color: colors.mutedForeground }]}>Detaylı grafik · {range.toUpperCase()}</Text>
+              <Text
+                style={[styles.fullscreenTitle, { color: colors.foreground }]}
+              >
+                {symbolText}
+              </Text>
+              <Text
+                style={[
+                  styles.fullscreenSubtitle,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Detaylı grafik · {range.toUpperCase()}
+              </Text>
             </View>
-            <Pressable onPress={() => setShowFullscreenChart(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Grafiği kapat">
+            <Pressable
+              onPress={() => setShowFullscreenChart(false)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Grafiği kapat"
+            >
               <IconCloseCircle color={colors.mutedForeground} size={24} />
             </Pressable>
           </View>
 
-          <View style={[styles.fullscreenModeRow, { borderColor: colors.border, backgroundColor: colors.card }]}>
-            <Text style={[styles.chartModeLabel, { color: colors.mutedForeground }]}>Grafik görünümü</Text>
+          <View
+            style={[
+              styles.fullscreenModeRow,
+              { borderColor: colors.border, backgroundColor: colors.card },
+            ]}
+          >
+            <Text
+              style={[styles.chartModeLabel, { color: colors.mutedForeground }]}
+            >
+              Grafik görünümü
+            </Text>
             <View style={styles.chartModeActions}>
-              <Pressable onPress={() => setChartType((type) => type === "candle" ? "line" : "candle")} style={styles.fullscreenTypeBtn}>
-                {chartType === "candle" ? <IconLineChart color={colors.up} size={20} /> : <IconCandle color={colors.up} size={20} />}
+              <Pressable
+                onPress={() =>
+                  setChartType((type) =>
+                    type === "candle" ? "line" : "candle",
+                  )
+                }
+                style={styles.fullscreenTypeBtn}
+              >
+                {chartType === "candle" ? (
+                  <IconLineChart color={colors.up} size={20} />
+                ) : (
+                  <IconCandle color={colors.up} size={20} />
+                )}
               </Pressable>
-              <Pressable onPress={() => setShowFullscreenChart(false)} style={styles.fullscreenTypeBtn}>
+              <Pressable
+                onPress={() => setShowFullscreenChart(false)}
+                style={styles.fullscreenTypeBtn}
+              >
                 <IconCollapse color={colors.foreground} size={20} />
               </Pressable>
             </View>
           </View>
-          <View style={[styles.fullscreenRangeRow, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View
+            style={[
+              styles.fullscreenRangeRow,
+              { borderColor: colors.border, backgroundColor: colors.card },
+            ]}
+          >
             {RANGES.map(({ key, label }) => (
-              <Pressable key={key} onPress={() => handleRangeChange(key)} style={[styles.fullscreenRangeBtn, range === key && { backgroundColor: colors.primary }]}>
-                <Text style={[styles.rangeBtnText, { color: range === key ? "#fff" : colors.mutedForeground }]}>{label}</Text>
+              <Pressable
+                key={key}
+                onPress={() => handleRangeChange(key)}
+                style={[
+                  styles.fullscreenRangeBtn,
+                  range === key && { backgroundColor: colors.primary },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.rangeBtnText,
+                    { color: range === key ? "#fff" : colors.mutedForeground },
+                  ]}
+                >
+                  {label}
+                </Text>
               </Pressable>
             ))}
           </View>
           <View style={styles.overlayLegend}>
             {visibleChartOverlays.map((overlay) => (
               <View key={overlay.label} style={styles.overlayLegendItem}>
-                <View style={[styles.overlayDot, { backgroundColor: overlay.color }]} />
-                <Text style={[styles.overlayLegendText, { color: colors.mutedForeground }]}>{overlay.label}</Text>
+                <View
+                  style={[
+                    styles.overlayDot,
+                    { backgroundColor: overlay.color },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.overlayLegendText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {overlay.label}
+                </Text>
               </View>
             ))}
           </View>
@@ -800,10 +1527,17 @@ export default function StockDetailScreen() {
                 height={420}
               />
             ) : (
-              <Text style={{ color: colors.mutedForeground }}>Grafik verisi yok</Text>
+              <Text style={{ color: colors.mutedForeground }}>
+                Grafik verisi yok
+              </Text>
             )}
           </View>
-          <Text style={[styles.fullscreenHint, { color: colors.mutedForeground }]}>Mum/çizgi düğmesi görünümü değiştirir. Zaman aralığı değiştiğinde grafik aynı aralıkta yeniden yüklenir.</Text>
+          <Text
+            style={[styles.fullscreenHint, { color: colors.mutedForeground }]}
+          >
+            Mum/çizgi düğmesi görünümü değiştirir. Zaman aralığı değiştiğinde
+            grafik aynı aralıkta yeniden yüklenir.
+          </Text>
         </View>
       </Modal>
 
@@ -820,41 +1554,109 @@ export default function StockDetailScreen() {
             keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
             style={styles.keyboardLayer}
           >
-            <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
-              <View style={[styles.modalHandle, { backgroundColor: colors.border }]} />
+            <View
+              style={[
+                styles.modalSheet,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  paddingBottom: insets.bottom + 16,
+                },
+              ]}
+            >
+              <View
+                style={[styles.modalHandle, { backgroundColor: colors.border }]}
+              />
               <View style={styles.modalHeader}>
                 <View>
-                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Fiyat Alarmı</Text>
-                  <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>{symbolText} · {symbolAlerts.length}/6 alarm</Text>
+                  <Text
+                    style={[styles.modalTitle, { color: colors.foreground }]}
+                  >
+                    Fiyat Alarmı
+                  </Text>
+                  <Text
+                    style={[styles.modalSub, { color: colors.mutedForeground }]}
+                  >
+                    {symbolText} · {symbolAlerts.length}/6 alarm
+                  </Text>
                 </View>
-                <Pressable onPress={() => setShowAlarmModal(false)} hitSlop={12} style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
+                <Pressable
+                  onPress={() => setShowAlarmModal(false)}
+                  hitSlop={12}
+                  style={[
+                    styles.modalCloseBtn,
+                    { backgroundColor: colors.secondary },
+                  ]}
+                >
                   <IconX color={colors.mutedForeground} size={15} />
                 </Pressable>
               </View>
 
               <View style={styles.modalTopNotice}>
-                <Text style={[styles.modalTopNoticeTitle, { color: colors.foreground }]}>Alarm ayarı</Text>
-                <Text style={[styles.modalTopNoticeText, { color: colors.mutedForeground }]}>Hedef fiyatı girin; klavye açıldığında alanlar yukarıda kalır.</Text>
+                <Text
+                  style={[
+                    styles.modalTopNoticeTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  Alarm ayarı
+                </Text>
+                <Text
+                  style={[
+                    styles.modalTopNoticeText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Hedef fiyatı girin; klavye açıldığında alanlar yukarıda kalır.
+                </Text>
               </View>
 
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Alarm türü</Text>
+                <Text
+                  style={[styles.fieldLabel, { color: colors.mutedForeground }]}
+                >
+                  Alarm türü
+                </Text>
                 <View style={styles.alarmTypeRow}>
-                  {([
-                    ["above", "Üstüne çıkınca", IconArrowUp, colors.up],
-                    ["below", "Altına düşünce", IconArrowDown, colors.down],
-                    ["tp", "Kâr al", IconTrendingUp, colors.up],
-                    ["sl", "Zarar kes", IconTrendingDown, colors.down],
-                  ] as const).map(([type, label, Icon, typeColor]) => {
+                  {(
+                    [
+                      ["above", "Üstüne çıkınca", IconArrowUp, colors.up],
+                      ["below", "Altına düşünce", IconArrowDown, colors.down],
+                      ["tp", "Kâr al", IconTrendingUp, colors.up],
+                      ["sl", "Zarar kes", IconTrendingDown, colors.down],
+                    ] as const
+                  ).map(([type, label, Icon, typeColor]) => {
                     const active = alarmType === type;
                     return (
                       <Pressable
                         key={type}
-                        style={[styles.alarmTypeBtn, { backgroundColor: active ? `${typeColor}20` : colors.input, borderColor: active ? typeColor : colors.border }]}
+                        style={[
+                          styles.alarmTypeBtn,
+                          {
+                            backgroundColor: active
+                              ? `${typeColor}20`
+                              : colors.input,
+                            borderColor: active ? typeColor : colors.border,
+                          },
+                        ]}
                         onPress={() => setAlarmType(type)}
                       >
-                        <Icon color={active ? typeColor : colors.mutedForeground} size={14} />
-                        <Text style={[styles.alarmTypeText, { color: active ? typeColor : colors.mutedForeground }]}>{label}</Text>
+                        <Icon
+                          color={active ? typeColor : colors.mutedForeground}
+                          size={14}
+                        />
+                        <Text
+                          style={[
+                            styles.alarmTypeText,
+                            {
+                              color: active
+                                ? typeColor
+                                : colors.mutedForeground,
+                            },
+                          ]}
+                        >
+                          {label}
+                        </Text>
                       </Pressable>
                     );
                   })}
@@ -862,9 +1664,20 @@ export default function StockDetailScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Hedef fiyat (₺)</Text>
+                <Text
+                  style={[styles.fieldLabel, { color: colors.mutedForeground }]}
+                >
+                  Hedef fiyat (₺)
+                </Text>
                 <TextInput
-                  style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
+                  style={[
+                    styles.fieldInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.input,
+                      borderColor: colors.border,
+                    },
+                  ]}
                   value={alarmTarget}
                   onChangeText={setAlarmTarget}
                   keyboardType="decimal-pad"
@@ -874,9 +1687,20 @@ export default function StockDetailScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Not (opsiyonel)</Text>
+                <Text
+                  style={[styles.fieldLabel, { color: colors.mutedForeground }]}
+                >
+                  Not (opsiyonel)
+                </Text>
                 <TextInput
-                  style={[styles.fieldInput, { color: colors.foreground, backgroundColor: colors.input, borderColor: colors.border }]}
+                  style={[
+                    styles.fieldInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.input,
+                      borderColor: colors.border,
+                    },
+                  ]}
                   value={alarmNote}
                   onChangeText={setAlarmNote}
                   placeholder="Örn. direnç seviyesi"
@@ -884,7 +1708,10 @@ export default function StockDetailScreen() {
                 />
               </View>
 
-              <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSaveAlarm}>
+              <Pressable
+                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSaveAlarm}
+              >
                 <Text style={styles.saveBtnText}>Alarmı Kur</Text>
               </Pressable>
             </View>
@@ -900,17 +1727,31 @@ export default function StockDetailScreen() {
         onRequestClose={() => setInfoKey(null)}
       >
         <Pressable style={styles.infoOverlay} onPress={() => setInfoKey(null)}>
-          <Pressable style={[styles.infoSheet, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={(e) => e.stopPropagation()}>
+          <Pressable
+            style={[
+              styles.infoSheet,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 {infoKey ? INDICATOR_INFO[infoKey]?.title : ""}
               </Text>
-              <Pressable onPress={() => setInfoKey(null)} hitSlop={12}
-                style={[styles.modalCloseBtn, { backgroundColor: colors.secondary }]}>
+              <Pressable
+                onPress={() => setInfoKey(null)}
+                hitSlop={12}
+                style={[
+                  styles.modalCloseBtn,
+                  { backgroundColor: colors.secondary },
+                ]}
+              >
                 <IconX color={colors.mutedForeground} size={15} />
               </Pressable>
             </View>
-            <Text style={[styles.reportText, { color: colors.mutedForeground }]}>
+            <Text
+              style={[styles.reportText, { color: colors.mutedForeground }]}
+            >
               {infoKey ? INDICATOR_INFO[infoKey]?.body : ""}
             </Text>
           </Pressable>
@@ -932,16 +1773,46 @@ const styles = StyleSheet.create({
   },
   priceLeft: { flex: 1 },
   priceRight: { alignItems: "flex-end", gap: 10, marginTop: 2 },
-  companyName: { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 6 },
+  companyName: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 6,
+  },
   priceText: { fontSize: 34, fontFamily: "Inter_700Bold", letterSpacing: -1 },
   changeRow: { flexDirection: "row", marginTop: 6 },
-  changePill: { flexDirection: "row", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  changePill: {
+    flexDirection: "row",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   changeAbs: { fontSize: 14, fontFamily: "Inter_500Medium" },
   changePct: { fontSize: 14, fontFamily: "Inter_500Medium" },
   sessionRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   sessionDot: { width: 6, height: 6, borderRadius: 3 },
-  sessionText: { fontSize: 11, fontFamily: "Inter_400Regular" },
-  chartModeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  sessionText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  quoteFreshnessLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 8,
+    textAlign: "right",
+  },
+  quoteFreshnessWarning: {
+    fontSize: 9,
+    lineHeight: 13,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+    maxWidth: 150,
+    textAlign: "right",
+  },
+  chartModeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   chartModeLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
   chartModeActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   rangeRow: {
@@ -953,29 +1824,114 @@ const styles = StyleSheet.create({
     gap: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  rangeBtn: { flex: 1, alignItems: "center", paddingHorizontal: 4, paddingVertical: 6, borderRadius: 8 },
+  rangeBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
   rangeBtnActive: {},
   rangeBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  chartTypeBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
-  chartExpandBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
+  chartTypeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chartExpandBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   fullscreenChartRoot: { flex: 1, paddingHorizontal: 12 },
-  fullscreenHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingBottom: 12 },
+  fullscreenHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+    paddingBottom: 12,
+  },
   fullscreenTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  fullscreenSubtitle: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  fullscreenModeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
-  fullscreenRangeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-around", gap: 0, padding: 6, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
-  fullscreenRangeBtn: { flex: 1, alignItems: "center", paddingHorizontal: 4, paddingVertical: 7, borderRadius: 8 },
-  fullscreenTypeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  overlayLegend: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 14, paddingTop: 10 },
+  fullscreenSubtitle: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  fullscreenModeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  fullscreenRangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    gap: 0,
+    padding: 6,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  fullscreenRangeBtn: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 4,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  fullscreenTypeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  overlayLegend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 14,
+    paddingTop: 10,
+  },
   overlayLegendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   overlayDot: { width: 7, height: 7, borderRadius: 4 },
   overlayLegendText: { fontSize: 10, fontFamily: "Inter_500Medium" },
-  fullscreenChartArea: { flex: 1, alignItems: "center", justifyContent: "center", marginTop: 12 },
-  fullscreenHint: { textAlign: "center", fontSize: 11, lineHeight: 16, paddingHorizontal: 12, paddingBottom: 4 },
+  fullscreenChartArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  fullscreenHint: {
+    textAlign: "center",
+    fontSize: 11,
+    lineHeight: 16,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
   chartLoader: { height: 236, alignItems: "center", justifyContent: "center" },
   section: { padding: 16, borderBottomWidth: StyleSheet.hairlineWidth },
-  sectionTitle: { fontSize: 14, fontFamily: "Inter_700Bold", marginBottom: 14, letterSpacing: 0.2 },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  sectionTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 14,
+    letterSpacing: 0.2,
+  },
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
   statCard: {
     flex: 1,
     minWidth: "30%",
@@ -983,9 +1939,17 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  statCardLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginBottom: 4 },
+  statCardLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginBottom: 4,
+  },
   statCardValue: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  statRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
+  statRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+  },
   statLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
   statValue: { fontSize: 13, fontFamily: "Inter_500Medium" },
   indGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
@@ -996,17 +1960,31 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  indCardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 },
+  indCardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
   indCardLeft: { flex: 1 },
   indLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   indSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
   indValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
   indTrack: { height: 4, borderRadius: 2, overflow: "hidden" },
   indFill: { height: "100%", borderRadius: 2 },
-  indHint: { fontSize: 11, fontFamily: "Inter_400Regular", lineHeight: 16, marginBottom: 12 },
+  indHint: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 16,
+    marginBottom: 12,
+  },
   infoDot: {
-    width: 13, height: 13, borderRadius: 7, borderWidth: 1,
-    alignItems: "center", justifyContent: "center",
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   infoOverlay: {
     flex: 1,
@@ -1049,23 +2027,75 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  performanceLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold", marginBottom: 3 },
+  performanceLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    marginBottom: 3,
+  },
   performanceSub: { fontSize: 11, fontFamily: "Inter_400Regular" },
   performanceValueWrap: { alignItems: "flex-end" },
   performanceAmount: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  performancePercent: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginTop: 2 },
-  reportCard: { borderRadius: 12, padding: 14, borderWidth: StyleSheet.hairlineWidth },
+  performancePercent: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 2,
+  },
+  reportCard: {
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   reportText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 21 },
-  valuationCard: { borderRadius: 12, padding: 14, borderWidth: StyleSheet.hairlineWidth },
-  valuationTitle: { fontSize: 14, fontFamily: "Inter_700Bold", lineHeight: 20, marginBottom: 5 },
-  valuationText: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18, marginBottom: 8 },
-  fundamentalGrid: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(127,127,127,0.2)", marginTop: 4, paddingTop: 4 },
-  dataBasis: { fontSize: 10, lineHeight: 15, fontFamily: "Inter_400Regular", marginTop: 8 },
-  externalLinkBtn: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 10, marginTop: 10, gap: 3 },
+  valuationCard: {
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  valuationTitle: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    lineHeight: 20,
+    marginBottom: 5,
+  },
+  valuationText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  fundamentalGrid: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(127,127,127,0.2)",
+    marginTop: 4,
+    paddingTop: 4,
+  },
+  dataBasis: {
+    fontSize: 10,
+    lineHeight: 15,
+    fontFamily: "Inter_400Regular",
+    marginTop: 8,
+  },
+  externalLinkBtn: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 10,
+    gap: 3,
+  },
   externalLinkText: { fontSize: 12, fontFamily: "Inter_700Bold" },
   externalLinkHint: { fontSize: 10, fontFamily: "Inter_400Regular" },
-  stockNewsCard: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
-  stockNewsRow: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingVertical: 11 },
+  stockNewsCard: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+  },
+  stockNewsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    paddingVertical: 11,
+  },
   newsDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
   newsCopy: { flex: 1 },
   newsTitle: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_600SemiBold" },
@@ -1126,14 +2156,39 @@ const styles = StyleSheet.create({
     gap: 12,
     maxHeight: "92%",
   },
-  modalTopNotice: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: "rgba(127,127,127,0.10)" },
+  modalTopNotice: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "rgba(127,127,127,0.10)",
+  },
   modalTopNoticeTitle: { fontSize: 13, fontFamily: "Inter_700Bold" },
-  modalTopNoticeText: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
-  modalHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 4 },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  modalTopNoticeText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  modalHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 4,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
   modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
   modalSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  modalCloseBtn: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  modalCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   priceInfoPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -1155,7 +2210,15 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
   },
   alarmTypeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  alarmTypeBtn: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 9, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
+  alarmTypeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 9,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   alarmTypeText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   totalRow: {
     flexDirection: "row",
@@ -1168,6 +2231,11 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 12, fontFamily: "Inter_400Regular" },
   totalVal: { fontSize: 15, fontFamily: "Inter_700Bold" },
-  saveBtn: { borderRadius: 14, paddingVertical: 14, alignItems: "center", marginTop: 4 },
+  saveBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 4,
+  },
   saveBtnText: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff" },
 });

@@ -1,12 +1,19 @@
 import { Hisse } from "@/services/collectApi";
 import { BIST30_SET, BIST50_SET } from "@/constants/bistStocks";
-import { fetchChartData } from "@/utils/yahooFinance";
-import { analyzeDailySetup, DailyTrendDirection, macd } from "@/utils/indicators";
+import { DataFreshness, fetchChartData } from "@/utils/yahooFinance";
+import {
+  analyzeDailySetup,
+  DailyTrendDirection,
+  macd,
+} from "@/utils/indicators";
+import { isPiyasaAcik } from "@/utils/seansKontrol";
 
 export type TreydEtiketi = "GÜÇLÜ ALIM" | "MOMENTUM KIRILIMI" | "TAKİP LİSTESİ";
+export type RadarDurumu = "gunluk_teyitli" | "gun_ici_izleme";
 
 const TOTAL_CONFIRMATIONS = 6;
 const MOMENTUM_CONFIRMATIONS_REQUIRED = 5;
+const INTRADAY_MIN_CONFIRMATIONS = 3;
 const CANDIDATE_POOL_SIZE = 12;
 const MIN_AVERAGE_TURNOVER_TL = 5_000_000;
 
@@ -31,6 +38,16 @@ export type TreydSinyali = {
   teyitSayisi: number;
   toplamTeyit: number;
   teyitler: string[];
+  /** Günlük kapanış teyitli veya gün içi izleme durumu. */
+  radarDurumu: RadarDurumu;
+  /** Quote verisinin tazelik sınıfı. */
+  veriKalitesi: DataFreshness;
+  /** Kullanıcıya gösterilecek veri uyarısı. */
+  veriUyarisi: string | null;
+  /** Quote kaynağının adı. */
+  veriKaynagi: string;
+  /** Kaynağın fiyatı son güncellediği Unix zamanı. */
+  piyasaZamani: number | null;
 };
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -48,10 +65,14 @@ export const calculateMedian = (values: number[]): number => {
     : validValues[middle];
 };
 
-const getQuoteCandidate = (hisse: Hisse, medianVolume: number): TreydSinyali => {
-  const volumeBaseline = hisse.ortalamaHacim && hisse.ortalamaHacim > 0
-    ? hisse.ortalamaHacim
-    : medianVolume;
+const getQuoteCandidate = (
+  hisse: Hisse,
+  medianVolume: number,
+): TreydSinyali => {
+  const volumeBaseline =
+    hisse.ortalamaHacim && hisse.ortalamaHacim > 0
+      ? hisse.ortalamaHacim
+      : medianVolume;
   const goreceliHacim = volumeBaseline > 0 ? hisse.hacim / volumeBaseline : 1;
   const boundedRelativeVolume = clamp(goreceliHacim, 0.5, 3);
   const priceComponent = clamp(hisse.degisimYuzde / 2, -2, 2);
@@ -79,43 +100,56 @@ const getQuoteCandidate = (hisse: Hisse, medianVolume: number): TreydSinyali => 
     teyitSayisi: 0,
     toplamTeyit: TOTAL_CONFIRMATIONS,
     teyitler: ["Günlük fiyat değişimi ve göreceli hacim ön taraması"],
+    radarDurumu: isPiyasaAcik() ? "gun_ici_izleme" : "gunluk_teyitli",
+    veriKalitesi: hisse.veriKalitesi,
+    veriUyarisi: hisse.veriUyarisi,
+    veriKaynagi: hisse.veriKaynagi,
+    piyasaZamani: hisse.piyasaZamani,
   };
 };
 
 export const getTop6Treyd = (hisseler: Hisse[]): TreydSinyali[] => {
-  const validStocks = hisseler.filter(
-    (hisse) => {
-      const averageTurnover = (hisse.ortalamaHacim ?? 0) * hisse.fiyat;
-      return (
-        BIST50_SET.has(hisse.sembol) &&
-        Number.isFinite(hisse.fiyat) &&
-        hisse.fiyat > 0 &&
-        Number.isFinite(hisse.degisimYuzde) &&
-        Number.isFinite(hisse.hacim) &&
-        Number.isFinite(hisse.ortalamaHacim) &&
-        (hisse.ortalamaHacim ?? 0) > 0 &&
-        averageTurnover >= MIN_AVERAGE_TURNOVER_TL &&
-        hisse.degisimYuzde > 0
-      );
-    },
-  );
+  const validStocks = hisseler.filter((hisse) => {
+    const averageTurnover = (hisse.ortalamaHacim ?? 0) * hisse.fiyat;
+    return (
+      BIST50_SET.has(hisse.sembol) &&
+      (hisse.veriKalitesi === "fresh" ||
+        hisse.veriKalitesi === "slightly_delayed" ||
+        hisse.veriKalitesi === "closed_reference") &&
+      Number.isFinite(hisse.fiyat) &&
+      hisse.fiyat > 0 &&
+      Number.isFinite(hisse.degisimYuzde) &&
+      Number.isFinite(hisse.hacim) &&
+      Number.isFinite(hisse.ortalamaHacim) &&
+      (hisse.ortalamaHacim ?? 0) > 0 &&
+      averageTurnover >= MIN_AVERAGE_TURNOVER_TL &&
+      hisse.degisimYuzde > 0
+    );
+  });
   const medianVolume = calculateMedian(validStocks.map((hisse) => hisse.hacim));
   if (medianVolume <= 0 || validStocks.length === 0) return [];
 
   return validStocks
     .map((hisse) => getQuoteCandidate(hisse, medianVolume))
     .sort((a, b) => {
-      const indexPriority = Number(BIST30_SET.has(b.sembol)) - Number(BIST30_SET.has(a.sembol));
+      const indexPriority =
+        Number(BIST30_SET.has(b.sembol)) - Number(BIST30_SET.has(a.sembol));
       return indexPriority || b.skor - a.skor;
     })
     .slice(0, CANDIDATE_POOL_SIZE);
 };
 
-const addSetupReason = (reasons: string[], label: string, confirmed: boolean): void => {
+const addSetupReason = (
+  reasons: string[],
+  label: string,
+  confirmed: boolean,
+): void => {
   reasons.push(`${confirmed ? "✓" : "—"} ${label}`);
 };
 
-const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> => {
+const confirmCandidate = async (
+  candidate: TreydSinyali,
+): Promise<TreydSinyali> => {
   try {
     const chart = await fetchChartData(candidate.sembol, "3mo");
     if (!chart || chart.closes.length < 60) {
@@ -126,11 +160,20 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
       };
     }
 
-    const daily = analyzeDailySetup(chart.closes, chart.highs, chart.lows, chart.volumes);
-    const lastCompletedIdx = chart.closes.length >= 2 ? chart.closes.length - 2 : chart.closes.length - 1;
+    const daily = analyzeDailySetup(
+      chart.closes,
+      chart.highs,
+      chart.lows,
+      chart.volumes,
+    );
+    const lastCompletedIdx =
+      chart.closes.length >= 2
+        ? chart.closes.length - 2
+        : chart.closes.length - 1;
     const macdSeries = macd(chart.closes);
     const macdHistogram = macdSeries.histogram[lastCompletedIdx] ?? NaN;
-    const previousMacdHistogram = macdSeries.histogram[Math.max(0, lastCompletedIdx - 1)] ?? NaN;
+    const previousMacdHistogram =
+      macdSeries.histogram[Math.max(0, lastCompletedIdx - 1)] ?? NaN;
     const macdConfirmed =
       Number.isFinite(macdHistogram) &&
       Number.isFinite(previousMacdHistogram) &&
@@ -148,7 +191,11 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
     const teyitSayisi = confirmations.filter(Boolean).length;
     const teyitler: string[] = [];
 
-    addSetupReason(teyitler, `Günlük trend yükseliş (${daily.dailyTrend})`, trendConfirmed);
+    addSetupReason(
+      teyitler,
+      `Günlük trend yükseliş (${daily.dailyTrend})`,
+      trendConfirmed,
+    );
     addSetupReason(
       teyitler,
       Number.isFinite(daily.resistance)
@@ -175,7 +222,11 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
       "Yüksek dip + yüksek tepe yapısı",
       daily.structureConfirmed,
     );
-    addSetupReason(teyitler, "MACD histogramı pozitif ve yükseliyor", macdConfirmed);
+    addSetupReason(
+      teyitler,
+      "MACD histogramı pozitif ve yükseliyor",
+      macdConfirmed,
+    );
 
     const strongBuy =
       candidate.degisimYuzde >= 0.75 &&
@@ -197,9 +248,23 @@ const confirmCandidate = async (candidate: TreydSinyali): Promise<TreydSinyali> 
         ? "MOMENTUM KIRILIMI"
         : "TAKİP LİSTESİ";
 
+    const radarDurumu: RadarDurumu =
+      teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED
+        ? "gunluk_teyitli"
+        : "gun_ici_izleme";
+    if (radarDurumu === "gun_ici_izleme") {
+      teyitler.push(
+        "ℹ Günlük kapanış teyidi 5/6 seviyesinde değil; yalnızca gün içi izleme",
+      );
+    }
     return {
       ...candidate,
-      skor: candidate.skor + teyitSayisi * 0.2 + (daily.resistanceBreakout ? 0.2 : 0) + (BIST30_SET.has(candidate.sembol) ? 0.15 : 0),
+      radarDurumu,
+      skor:
+        candidate.skor +
+        teyitSayisi * 0.2 +
+        (daily.resistanceBreakout ? 0.2 : 0) +
+        (BIST30_SET.has(candidate.sembol) ? 0.15 : 0),
       etiket,
       trendTeyitli: trendConfirmed,
       gunlukTrend: daily.dailyTrend,
@@ -231,11 +296,25 @@ export const getTop6TreydWithConfirmation = async (
   if (candidates.length === 0) return [];
 
   const confirmed = await Promise.all(candidates.map(confirmCandidate));
-  return confirmed
-    .filter((signal) => signal.teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED)
-    .sort((a, b) => {
-      const indexPriority = Number(BIST30_SET.has(b.sembol)) - Number(BIST30_SET.has(a.sembol));
-      return indexPriority || b.skor - a.skor;
-    })
+  const eligible = confirmed.filter(
+    (signal) => signal.teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED,
+  );
+  const sortSignals = (a: TreydSinyali, b: TreydSinyali): number => {
+    const indexPriority =
+      Number(BIST30_SET.has(b.sembol)) - Number(BIST30_SET.has(a.sembol));
+    return indexPriority || b.skor - a.skor;
+  };
+  const dailyConfirmed = eligible
+    .filter((signal) => signal.radarDurumu === "gunluk_teyitli")
+    .sort(sortSignals)
     .slice(0, 6);
+  const intradayWatch = confirmed
+    .filter(
+      (signal) =>
+        signal.radarDurumu === "gun_ici_izleme" &&
+        signal.teyitSayisi >= INTRADAY_MIN_CONFIRMATIONS,
+    )
+    .sort(sortSignals)
+    .slice(0, 6);
+  return [...dailyConfirmed, ...intradayWatch];
 };

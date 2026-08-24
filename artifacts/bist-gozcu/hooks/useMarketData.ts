@@ -3,6 +3,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBist100, Hisse } from "@/services/collectApi";
+import {
+  classifyDataFreshness,
+  getFreshnessWarning,
+} from "@/utils/yahooFinance";
 import { isPiyasaAcik } from "@/utils/seansKontrol";
 
 const OPEN_MARKET_CACHE_TTL = 2 * 60 * 1000;
@@ -18,6 +22,32 @@ type CacheEnvelope = {
 
 const getCacheKey = (endpoint: string): string =>
   `market_data_cache:${endpoint}`;
+
+const withCacheFreshness = (
+  data: Hisse[],
+  cachedAt: number,
+  expired: boolean,
+): Hisse[] =>
+  data.map((item) => {
+    const rawPiyasaZamani = item.piyasaZamani;
+    const piyasaZamani =
+      rawPiyasaZamani != null &&
+      Number.isFinite(rawPiyasaZamani) &&
+      rawPiyasaZamani > 0
+        ? rawPiyasaZamani
+        : null;
+    const freshness = expired
+      ? ("stale" as const)
+      : classifyDataFreshness(piyasaZamani, Date.now(), isPiyasaAcik());
+    return {
+      ...item,
+      piyasaZamani,
+      veriCekilmeZamani: item.veriCekilmeZamani || cachedAt,
+      veriKalitesi: freshness,
+      veriKaynagi: item.veriKaynagi || "Yerel cache",
+      veriUyarisi: getFreshnessWarning(freshness),
+    };
+  });
 
 const fetchEndpoint = async (endpoint: string): Promise<Hisse[]> => {
   if (endpoint === "bist100") return getBist100();
@@ -37,8 +67,11 @@ const readCache = async (
     const raw = await AsyncStorage.getItem(getCacheKey(endpoint));
     if (!raw) return null;
     const cached = JSON.parse(raw) as CacheEnvelope;
-    if (!Array.isArray(cached.data) || typeof cached.ts !== "number") return null;
-    if (allowExpired || Date.now() - cached.ts <= getCacheTtl()) return cached.data;
+    if (!Array.isArray(cached.data) || typeof cached.ts !== "number")
+      return null;
+    const expired = Date.now() - cached.ts > getCacheTtl();
+    if (allowExpired || !expired)
+      return withCacheFreshness(cached.data, cached.ts, expired);
   } catch {
     return null;
   }
@@ -77,7 +110,9 @@ export const useMarketData = (endpoint: string) => {
 
   const manuelYenile = async (): Promise<void> => {
     await AsyncStorage.removeItem(getCacheKey(endpoint));
-    await queryClient.invalidateQueries({ queryKey: ["market-data", endpoint] });
+    await queryClient.invalidateQueries({
+      queryKey: ["market-data", endpoint],
+    });
     await query.refetch();
   };
 

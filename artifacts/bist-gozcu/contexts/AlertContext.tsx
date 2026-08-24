@@ -1,9 +1,17 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { useStocks } from "./StockContext";
+import { DataFreshness } from "@/utils/yahooFinance";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -47,6 +55,8 @@ export interface RadarNotificationCandidate {
   changePercent: number;
   teyitSayisi: number;
   teyitler: string[];
+  radarDurumu: "gunluk_teyitli" | "gun_ici_izleme";
+  veriKalitesi: DataFreshness;
 }
 
 const RADAR_NOTIFICATION_KEY = "bist_trend_radar_notifications_v1";
@@ -56,21 +66,33 @@ const localDateKey = (): string => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 };
 
-export async function fireRadarNotifications(candidates: RadarNotificationCandidate[]): Promise<void> {
-  if (Platform.OS === "web" || candidates.length === 0) return;
+export async function fireRadarNotifications(
+  candidates: RadarNotificationCandidate[],
+): Promise<void> {
+  const eligibleCandidates = candidates.filter(
+    (candidate) =>
+      candidate.radarDurumu === "gunluk_teyitli" &&
+      (candidate.veriKalitesi === "fresh" ||
+        candidate.veriKalitesi === "closed_reference"),
+  );
+  if (Platform.OS === "web" || eligibleCandidates.length === 0) return;
   const granted = await ensureNotificationPermission();
   if (!granted) return;
 
   let sentState: Record<string, { date: string; stage: number }> = {};
   try {
     const raw = await AsyncStorage.getItem(RADAR_NOTIFICATION_KEY);
-    if (raw) sentState = JSON.parse(raw) as Record<string, { date: string; stage: number }>;
+    if (raw)
+      sentState = JSON.parse(raw) as Record<
+        string,
+        { date: string; stage: number }
+      >;
   } catch {
     sentState = {};
   }
 
   const today = localDateKey();
-  for (const candidate of candidates) {
+  for (const candidate of eligibleCandidates) {
     const stage = candidate.teyitSayisi >= 6 ? 6 : 5;
     const previous = sentState[candidate.symbol];
     if (previous?.date === today && previous.stage >= stage) continue;
@@ -94,7 +116,10 @@ export async function fireRadarNotifications(candidates: RadarNotificationCandid
   }
 
   const entries = Object.entries(sentState).slice(-100);
-  await AsyncStorage.setItem(RADAR_NOTIFICATION_KEY, JSON.stringify(Object.fromEntries(entries)));
+  await AsyncStorage.setItem(
+    RADAR_NOTIFICATION_KEY,
+    JSON.stringify(Object.fromEntries(entries)),
+  );
 }
 
 export type AlertType = "above" | "below" | "tp" | "sl";
@@ -113,7 +138,12 @@ export interface PriceAlert {
 interface AlertContextType {
   alerts: PriceAlert[];
   triggeredAlerts: PriceAlert[];
-  addAlert: (symbol: string, targetPrice: number, alertType: AlertType, note?: string) => void;
+  addAlert: (
+    symbol: string,
+    targetPrice: number,
+    alertType: AlertType,
+    note?: string,
+  ) => void;
   removeAlert: (id: string) => void;
   clearTriggered: () => void;
   dismissTriggered: (id: string) => void;
@@ -153,6 +183,12 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
       if (alert.triggered) return alert;
       const quote = quotes[alert.symbol];
       if (!quote) return alert;
+      if (
+        quote.freshness !== "fresh" &&
+        quote.freshness !== "slightly_delayed" &&
+        quote.freshness !== "closed_reference"
+      )
+        return alert;
       const price = quote.regularMarketPrice;
       const prev = prevChecked.current[alert.symbol];
       prevChecked.current[alert.symbol] = price;
@@ -180,14 +216,31 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     }
   }, [quotes, alerts, save]);
 
-  const addAlert = useCallback((symbol: string, targetPrice: number, alertType: AlertType, note = "") => {
-    const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
-    save([...alerts, { id, symbol, targetPrice, alertType, triggered: false, note, createdAt: Date.now() }]);
-  }, [alerts, save]);
+  const addAlert = useCallback(
+    (symbol: string, targetPrice: number, alertType: AlertType, note = "") => {
+      const id = Date.now().toString() + Math.random().toString(36).slice(2, 7);
+      save([
+        ...alerts,
+        {
+          id,
+          symbol,
+          targetPrice,
+          alertType,
+          triggered: false,
+          note,
+          createdAt: Date.now(),
+        },
+      ]);
+    },
+    [alerts, save],
+  );
 
-  const removeAlert = useCallback((id: string) => {
-    save(alerts.filter((a) => a.id !== id));
-  }, [alerts, save]);
+  const removeAlert = useCallback(
+    (id: string) => {
+      save(alerts.filter((a) => a.id !== id));
+    },
+    [alerts, save],
+  );
 
   const clearTriggered = useCallback(() => setTriggeredAlerts([]), []);
 
@@ -196,7 +249,16 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AlertContext.Provider value={{ alerts, triggeredAlerts, addAlert, removeAlert, clearTriggered, dismissTriggered }}>
+    <AlertContext.Provider
+      value={{
+        alerts,
+        triggeredAlerts,
+        addAlert,
+        removeAlert,
+        clearTriggered,
+        dismissTriggered,
+      }}
+    >
       {children}
     </AlertContext.Provider>
   );

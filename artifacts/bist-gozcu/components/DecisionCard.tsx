@@ -1,6 +1,11 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import {
+  DataFreshness,
+  formatMarketTimestamp,
+  getFreshnessLabel,
+} from "@/utils/yahooFinance";
 
 interface DecisionCardProps {
   sembol: string;
@@ -24,6 +29,10 @@ interface DecisionCardProps {
   yuksekTepe?: boolean;
   yapiTeyitli?: boolean;
   teyitler?: string[];
+  radarDurumu?: "gunluk_teyitli" | "gun_ici_izleme";
+  veriKalitesi?: DataFreshness;
+  veriUyarisi?: string | null;
+  piyasaZamani?: number | null;
 }
 
 function SignalChip({
@@ -36,8 +45,18 @@ function SignalChip({
   colors: ReturnType<typeof useColors>;
 }) {
   return (
-    <View style={[styles.chip, { backgroundColor: confirmed ? `${colors.up}18` : `${colors.down}14` }]}>
-      <Text style={[styles.chipText, { color: confirmed ? colors.up : colors.down }]}>
+    <View
+      style={[
+        styles.chip,
+        { backgroundColor: confirmed ? `${colors.up}18` : `${colors.down}14` },
+      ]}
+    >
+      <Text
+        style={[
+          styles.chipText,
+          { color: confirmed ? colors.up : colors.down },
+        ]}
+      >
         {confirmed ? "✓" : "—"} {label}
       </Text>
     </View>
@@ -66,6 +85,10 @@ export default function DecisionCard({
   yuksekTepe = false,
   yapiTeyitli = false,
   teyitler = [],
+  radarDurumu = "gun_ici_izleme",
+  veriKalitesi = "unknown",
+  veriUyarisi = null,
+  piyasaZamani = null,
 }: DecisionCardProps) {
   const colors = useColors();
   const hasProximityBar =
@@ -87,60 +110,163 @@ export default function DecisionCard({
     : null;
   const isStrongBuy = etiket === "GÜÇLÜ ALIM";
   const tagColor = isStrongBuy ? colors.up : colors.primary;
-  const trendLabel = gunlukTrend === "up" ? "Trend yukarı" : gunlukTrend === "down" ? "Trend aşağı" : "Trend yatay";
-  const rsiLabel = Number.isFinite(rsiValue) ? `RSI ${rsiValue?.toFixed(0)}` : "RSI yok";
-  const resistanceLabel = Number.isFinite(direnc) ? `Direnç ₺${direnc?.toFixed(2)}` : "Direnç yok";
+  const trendLabel =
+    gunlukTrend === "up"
+      ? "Trend yukarı"
+      : gunlukTrend === "down"
+        ? "Trend aşağı"
+        : "Trend yatay";
+  const rsiLabel = Number.isFinite(rsiValue)
+    ? `RSI ${rsiValue?.toFixed(0)}`
+    : "RSI yok";
+  const resistanceLabel = Number.isFinite(direnc)
+    ? `Direnç ₺${direnc?.toFixed(2)}`
+    : "Direnç yok";
+  const radarLabel =
+    radarDurumu === "gunluk_teyitli"
+      ? "Günlük kapanış teyitli"
+      : "Gün içi izleme";
+  const radarColor =
+    radarDurumu === "gunluk_teyitli" ? colors.up : colors.primary;
+  const freshnessColor =
+    veriKalitesi === "fresh" || veriKalitesi === "closed_reference"
+      ? colors.up
+      : veriKalitesi === "slightly_delayed"
+        ? colors.neutral
+        : colors.down;
 
-  const dailyChange = Number.isFinite(gunlukDegisim) ? gunlukDegisim as number : null;
-  const dailyChangeColor = dailyChange == null ? colors.mutedForeground : dailyChange >= 0 ? colors.up : colors.down;
+  const dailyChange = Number.isFinite(gunlukDegisim)
+    ? (gunlukDegisim as number)
+    : null;
+  const dailyChangeColor =
+    dailyChange == null
+      ? colors.mutedForeground
+      : dailyChange >= 0
+        ? colors.up
+        : colors.down;
 
   return (
     <Pressable
       disabled={!onPress}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, { backgroundColor: colors.card, borderColor: colors.border }, pressed && onPress && { opacity: 0.78 }]}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: colors.card, borderColor: colors.border },
+        pressed && onPress && { opacity: 0.78 },
+      ]}
     >
       <View style={styles.topRow}>
         <View style={styles.identity}>
-          <Text style={[styles.symbol, { color: colors.foreground }]}>{sembol}</Text>
+          <Text style={[styles.symbol, { color: colors.foreground }]}>
+            {sembol}
+          </Text>
           <View style={styles.priceLine}>
-            <Text style={[styles.price, { color: colors.mutedForeground }]}>₺{guncelFiyat.toFixed(2)}</Text>
+            <Text style={[styles.price, { color: colors.mutedForeground }]}>
+              ₺{guncelFiyat.toFixed(2)}
+            </Text>
             {dailyChange != null && (
               <Text style={[styles.dailyChange, { color: dailyChangeColor }]}>
-                {dailyChange >= 0 ? "+" : ""}{dailyChange.toFixed(2)}%
+                {dailyChange >= 0 ? "+" : ""}
+                {dailyChange.toFixed(2)}%
               </Text>
             )}
           </View>
         </View>
         <View style={styles.scoreBox}>
           <Text style={[styles.label, { color: tagColor }]}>{etiket}</Text>
-          <Text style={[styles.score, { color: colors.foreground }]}>{skor.toFixed(2)}</Text>
+          <Text style={[styles.score, { color: colors.foreground }]}>
+            {skor.toFixed(2)}
+          </Text>
         </View>
       </View>
 
+      <View style={styles.statusRow}>
+        <View
+          style={[styles.statusBadge, { backgroundColor: `${radarColor}18` }]}
+        >
+          <Text style={[styles.statusText, { color: radarColor }]}>
+            {radarLabel}
+          </Text>
+        </View>
+        <View style={styles.freshnessWrap}>
+          <Text style={[styles.freshnessText, { color: freshnessColor }]}>
+            {getFreshnessLabel(veriKalitesi)}
+          </Text>
+          <Text
+            style={[styles.timestampText, { color: colors.mutedForeground }]}
+          >
+            Kaynak {formatMarketTimestamp(piyasaZamani)}
+          </Text>
+        </View>
+      </View>
+      {veriUyarisi && veriKalitesi !== "fresh" && (
+        <Text style={[styles.freshnessWarning, { color: freshnessColor }]}>
+          {veriUyarisi}
+        </Text>
+      )}
+
       <View style={styles.confirmationRow}>
-        <View style={[styles.confirmationBadge, { backgroundColor: trendTeyitli ? `${colors.up}18` : `${colors.neutral}18` }]}>
-          <Text style={[styles.confirmationText, { color: trendTeyitli ? colors.up : colors.neutral }]}>
+        <View
+          style={[
+            styles.confirmationBadge,
+            {
+              backgroundColor: trendTeyitli
+                ? `${colors.up}18`
+                : `${colors.neutral}18`,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.confirmationText,
+              { color: trendTeyitli ? colors.up : colors.neutral },
+            ]}
+          >
             {trendTeyitli ? "Günlük trend teyitli" : "Günlük trend teyitsiz"}
           </Text>
         </View>
-        <Text style={[styles.confirmationCount, { color: colors.mutedForeground }]}>{teyitSayisi}/{toplamTeyit} teyit</Text>
+        <Text
+          style={[styles.confirmationCount, { color: colors.mutedForeground }]}
+        >
+          {teyitSayisi}/{toplamTeyit} teyit
+        </Text>
       </View>
 
       <View style={styles.signalGrid}>
-        <SignalChip label={trendLabel} confirmed={trendTeyitli} colors={colors} />
-        <SignalChip label={direncKirildi ? "Direnç kırıldı" : resistanceLabel} confirmed={direncKirildi} colors={colors} />
+        <SignalChip
+          label={trendLabel}
+          confirmed={trendTeyitli}
+          colors={colors}
+        />
+        <SignalChip
+          label={direncKirildi ? "Direnç kırıldı" : resistanceLabel}
+          confirmed={direncKirildi}
+          colors={colors}
+        />
         <SignalChip label="Hacim" confirmed={hacimTeyitli} colors={colors} />
         <SignalChip label={rsiLabel} confirmed={rsiUygun} colors={colors} />
         <SignalChip label="Yüksek dip" confirmed={yuksekDip} colors={colors} />
-        <SignalChip label="Yüksek tepe" confirmed={yuksekTepe} colors={colors} />
-        <SignalChip label="Yapı teyitli" confirmed={yapiTeyitli} colors={colors} />
+        <SignalChip
+          label="Yüksek tepe"
+          confirmed={yuksekTepe}
+          colors={colors}
+        />
+        <SignalChip
+          label="Yapı teyitli"
+          confirmed={yapiTeyitli}
+          colors={colors}
+        />
       </View>
 
       {teyitler.length > 0 && (
         <View style={styles.reasons}>
           {teyitler.slice(0, 7).map((reason) => (
-            <Text key={reason} style={[styles.reason, { color: colors.mutedForeground }]}>{reason}</Text>
+            <Text
+              key={reason}
+              style={[styles.reason, { color: colors.mutedForeground }]}
+            >
+              {reason}
+            </Text>
           ))}
         </View>
       )}
@@ -148,11 +274,20 @@ export default function DecisionCard({
       {progress !== null && (
         <View style={styles.proximity}>
           <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
-            <View style={[styles.barFill, { width: `${progress}%`, backgroundColor: colors.primary }]} />
+            <View
+              style={[
+                styles.barFill,
+                { width: `${progress}%`, backgroundColor: colors.primary },
+              ]}
+            />
           </View>
           <View style={styles.levels}>
-            <Text style={[styles.level, { color: colors.down }]}>SL ₺{stopFiyat?.toFixed(2)}</Text>
-            <Text style={[styles.level, { color: colors.up }]}>TP ₺{hedefFiyat?.toFixed(2)}</Text>
+            <Text style={[styles.level, { color: colors.down }]}>
+              SL ₺{stopFiyat?.toFixed(2)}
+            </Text>
+            <Text style={[styles.level, { color: colors.up }]}>
+              TP ₺{hedefFiyat?.toFixed(2)}
+            </Text>
           </View>
         </View>
       )}
@@ -162,17 +297,64 @@ export default function DecisionCard({
 
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
-  topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   identity: { flexShrink: 1 },
   symbol: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  priceLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 },
+  priceLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 3,
+  },
   price: { fontSize: 12, fontFamily: "Inter_400Regular" },
   dailyChange: { fontSize: 12, fontFamily: "Inter_700Bold" },
   scoreBox: { alignItems: "flex-end", marginLeft: 8 },
   label: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 0.4 },
   score: { fontSize: 20, fontFamily: "Inter_700Bold", marginTop: 2 },
-  confirmationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  confirmationBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  statusBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    flexShrink: 1,
+  },
+  statusText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  freshnessWrap: { alignItems: "flex-end", flexShrink: 1 },
+  freshnessText: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "right",
+  },
+  timestampText: {
+    fontSize: 9,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+    textAlign: "right",
+  },
+  freshnessWarning: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  confirmationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  confirmationBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
   confirmationText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   confirmationCount: { fontSize: 10, fontFamily: "Inter_400Regular" },
   signalGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
