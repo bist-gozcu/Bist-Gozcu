@@ -37,11 +37,16 @@ export interface MACDResult {
   histogram: number[];
 }
 
-export function macd(prices: number[], fast = 12, slow = 26, signal = 9): MACDResult {
+export function macd(
+  prices: number[],
+  fast = 12,
+  slow = 26,
+  signal = 9,
+): MACDResult {
   const ema12 = ema(prices, fast);
   const ema26 = ema(prices, slow);
   const macdLine = ema12.map((v, i) =>
-    isNaN(v) || isNaN(ema26[i]) ? NaN : v - ema26[i]
+    isNaN(v) || isNaN(ema26[i]) ? NaN : v - ema26[i],
   );
   const validMacd = macdLine.filter((v) => !isNaN(v));
   const signalEma = ema(validMacd, signal);
@@ -54,9 +59,73 @@ export function macd(prices: number[], fast = 12, slow = 26, signal = 9): MACDRe
     }
   }
   const histogram = macdLine.map((v, i) =>
-    isNaN(v) || isNaN(signalLine[i]) ? NaN : v - signalLine[i]
+    isNaN(v) || isNaN(signalLine[i]) ? NaN : v - signalLine[i],
   );
   return { macd: macdLine, signal: signalLine, histogram };
+}
+
+export type OpeningBias = "up" | "down" | "balanced";
+
+export interface OpeningAnalysisResult {
+  requestedDays: number;
+  validDays: number;
+  upDays: number;
+  downDays: number;
+  flatDays: number;
+  minGapPercent: number | null;
+  maxGapPercent: number | null;
+  averageGapPercent: number | null;
+  lastGapPercent: number | null;
+  bias: OpeningBias;
+  recentUpDays: number;
+  recentDownDays: number;
+}
+
+/** Açılış fiyatını önceki işlem gününün kapanışına göre analiz eder. */
+export function analyzeOpeningBehavior(
+  opens: number[],
+  closes: number[],
+  period = 50,
+): OpeningAnalysisResult | null {
+  const gaps: number[] = [];
+  const start = Math.max(1, closes.length - period);
+  for (let i = start; i < closes.length; i++) {
+    const open = opens[i];
+    const previousClose = closes[i - 1];
+    if (
+      !Number.isFinite(open) ||
+      !Number.isFinite(previousClose) ||
+      open <= 0 ||
+      previousClose <= 0
+    )
+      continue;
+    gaps.push(((open - previousClose) / previousClose) * 100);
+  }
+  if (gaps.length === 0) return null;
+
+  const upDays = gaps.filter((gap) => gap > 0).length;
+  const downDays = gaps.filter((gap) => gap < 0).length;
+  const flatDays = gaps.length - upDays - downDays;
+  const recentGaps = gaps.slice(-5);
+  const recentUpDays = recentGaps.filter((gap) => gap > 0).length;
+  const recentDownDays = recentGaps.filter((gap) => gap < 0).length;
+  const bias: OpeningBias =
+    upDays > downDays ? "up" : downDays > upDays ? "down" : "balanced";
+
+  return {
+    requestedDays: period,
+    validDays: gaps.length,
+    upDays,
+    downDays,
+    flatDays,
+    minGapPercent: Math.min(...gaps),
+    maxGapPercent: Math.max(...gaps),
+    averageGapPercent: gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length,
+    lastGapPercent: gaps.at(-1) ?? null,
+    bias,
+    recentUpDays,
+    recentDownDays,
+  };
 }
 
 export function rsi(prices: number[], period = 14): number[] {
@@ -88,7 +157,7 @@ export function atr(
   highs: number[],
   lows: number[],
   closes: number[],
-  period = 14
+  period = 14,
 ): number[] {
   const result: number[] = new Array(closes.length).fill(NaN);
   if (closes.length < period + 1) return result;
@@ -135,7 +204,7 @@ export function analyzeStock(
   closes: number[],
   highs: number[],
   lows: number[],
-  volumes: number[]
+  volumes: number[],
 ): AnalysisResult {
   const n = closes.length;
   const empty: AnalysisResult = {
@@ -178,46 +247,84 @@ export function analyzeStock(
 
   /* RSI */
   if (!isNaN(rsiVal)) {
-    if (rsiVal < 30) { score += 2; reasons.push(`RSI aşırı satım (${rsiVal.toFixed(0)})`); }
-    else if (rsiVal < 45) { score += 1; reasons.push(`RSI düşük bölge (${rsiVal.toFixed(0)})`); }
-    else if (rsiVal > 70) { score -= 2; reasons.push(`RSI aşırı alım (${rsiVal.toFixed(0)})`); }
-    else if (rsiVal > 55) { score -= 1; reasons.push(`RSI yüksek bölge (${rsiVal.toFixed(0)})`); }
+    if (rsiVal < 30) {
+      score += 2;
+      reasons.push(`RSI aşırı satım (${rsiVal.toFixed(0)})`);
+    } else if (rsiVal < 45) {
+      score += 1;
+      reasons.push(`RSI düşük bölge (${rsiVal.toFixed(0)})`);
+    } else if (rsiVal > 70) {
+      score -= 2;
+      reasons.push(`RSI aşırı alım (${rsiVal.toFixed(0)})`);
+    } else if (rsiVal > 55) {
+      score -= 1;
+      reasons.push(`RSI yüksek bölge (${rsiVal.toFixed(0)})`);
+    }
   }
 
   /* MACD */
   if (!isNaN(macdHist) && !isNaN(prevHist)) {
-    if (macdHist > 0 && prevHist < 0) { score += 2; reasons.push("MACD yukarı kesim"); }
-    else if (macdHist > 0) { score += 1; reasons.push("MACD pozitif"); }
-    else if (macdHist < 0 && prevHist > 0) { score -= 2; reasons.push("MACD aşağı kesim"); }
-    else { score -= 1; reasons.push("MACD negatif"); }
+    if (macdHist > 0 && prevHist < 0) {
+      score += 2;
+      reasons.push("MACD yukarı kesim");
+    } else if (macdHist > 0) {
+      score += 1;
+      reasons.push("MACD pozitif");
+    } else if (macdHist < 0 && prevHist > 0) {
+      score -= 2;
+      reasons.push("MACD aşağı kesim");
+    } else {
+      score -= 1;
+      reasons.push("MACD negatif");
+    }
   }
 
   /* MA */
   if (!isNaN(ma20) && !isNaN(ma50)) {
-    if (currentPrice > ma20 && currentPrice > ma50) { score += 1; reasons.push("Fiyat MA20 & MA50 üstünde"); }
-    else if (currentPrice < ma20 && currentPrice < ma50) { score -= 1; reasons.push("Fiyat MA20 & MA50 altında"); }
-    if (ma20 > ma50) { score += 1; reasons.push("MA20 > MA50 (yükseliş trendi)"); }
-    else { score -= 1; reasons.push("MA20 < MA50 (düşüş trendi)"); }
+    if (currentPrice > ma20 && currentPrice > ma50) {
+      score += 1;
+      reasons.push("Fiyat MA20 & MA50 üstünde");
+    } else if (currentPrice < ma20 && currentPrice < ma50) {
+      score -= 1;
+      reasons.push("Fiyat MA20 & MA50 altında");
+    }
+    if (ma20 > ma50) {
+      score += 1;
+      reasons.push("MA20 > MA50 (yükseliş trendi)");
+    } else {
+      score -= 1;
+      reasons.push("MA20 < MA50 (düşüş trendi)");
+    }
   }
 
   /* Volume confirmation: son TAMAMLANMIŞ günün hacmi, önceki 20 günlük ortalamanın üstünde mi?
      Not: Son bar piyasa açıkken kısmi (gün içi) olabileceğinden, hacim karşılaştırması
      son tamamlanmış bar (n-2) ile yapılır; bu da "hep düşük çıkma" yanlış pozitifini önler. */
   const lastCompletedIdx = n - 2 >= 0 ? n - 2 : n - 1;
-  const priorVolumes = volumes.slice(Math.max(0, lastCompletedIdx - 20), lastCompletedIdx);
-  const avgVolume = priorVolumes.reduce((a, b) => a + b, 0) / (priorVolumes.length || 1);
+  const priorVolumes = volumes.slice(
+    Math.max(0, lastCompletedIdx - 20),
+    lastCompletedIdx,
+  );
+  const avgVolume =
+    priorVolumes.reduce((a, b) => a + b, 0) / (priorVolumes.length || 1);
   const lastVolume = volumes[lastCompletedIdx] ?? 0;
   const volumeConfirmed = avgVolume > 0 && lastVolume >= avgVolume * 0.85;
 
-  if (volumeConfirmed && score > 0) { score += 1; reasons.push("Hacim ortalamanın üzerinde (teyit)"); }
-  else if (volumeConfirmed && score < 0) { score -= 1; reasons.push("Hacim ortalamanın üzerinde (teyit)"); }
+  if (volumeConfirmed && score > 0) {
+    score += 1;
+    reasons.push("Hacim ortalamanın üzerinde (teyit)");
+  } else if (volumeConfirmed && score < 0) {
+    score -= 1;
+    reasons.push("Hacim ortalamanın üzerinde (teyit)");
+  }
 
   let signal: Signal = "neutral";
   if (score >= 3) signal = "buy";
   else if (score <= -3) signal = "sell";
 
   const absScore = Math.abs(score);
-  const strength: SignalStrength = absScore >= 7 ? "güçlü" : absScore >= 4 ? "orta" : "zayıf";
+  const strength: SignalStrength =
+    absScore >= 7 ? "güçlü" : absScore >= 4 ? "orta" : "zayıf";
 
   /* ATR bazlı stop-loss / take-profit (1.5x risk, 2.5x hedef -> ~1:1.67 R/R) */
   let stopLoss = NaN;
@@ -279,8 +386,6 @@ export function getActionAdvice(a: AnalysisResult): string {
   return "Göstergeler net bir yön göstermiyor (birbirini nötrleyen sinyaller var). Bu genelde kararsız/yatay bir piyasa anlamına gelir; net bir sinyal oluşana kadar beklemek, yeni pozisyon açmamak mantıklı olur.";
 }
 
-
-
 export type DailyTrendDirection = "up" | "sideways" | "down";
 
 export interface DailySetupAnalysis {
@@ -298,7 +403,9 @@ export interface DailySetupAnalysis {
 
 const averageOf = (values: number[]): number => {
   const valid = values.filter((value) => Number.isFinite(value) && value > 0);
-  return valid.length > 0 ? valid.reduce((sum, value) => sum + value, 0) / valid.length : NaN;
+  return valid.length > 0
+    ? valid.reduce((sum, value) => sum + value, 0) / valid.length
+    : NaN;
 };
 
 /**
@@ -337,7 +444,9 @@ export function analyzeDailySetup(
   const ma50 = ma50Arr[last];
   const previousMa20 = ma20Arr[Math.max(0, last - 5)];
   const dailyTrend: DailyTrendDirection =
-    Number.isFinite(ma20) && Number.isFinite(ma50) && Number.isFinite(previousMa20)
+    Number.isFinite(ma20) &&
+    Number.isFinite(ma50) &&
+    Number.isFinite(previousMa20)
       ? lastClose > ma20 && ma20 > ma50 && ma20 > previousMa20
         ? "up"
         : lastClose < ma20 && ma20 < ma50 && ma20 < previousMa20
@@ -349,7 +458,8 @@ export function analyzeDailySetup(
   const resistanceValues = highs
     .slice(resistanceStart, last)
     .filter((value) => Number.isFinite(value) && value > 0);
-  const resistance = resistanceValues.length > 0 ? Math.max(...resistanceValues) : NaN;
+  const resistance =
+    resistanceValues.length > 0 ? Math.max(...resistanceValues) : NaN;
   const resistanceBreakout =
     Number.isFinite(resistance) &&
     lastClose > resistance * 1.003 &&
@@ -360,11 +470,14 @@ export function analyzeDailySetup(
     .filter((value) => Number.isFinite(value) && value > 0);
   const averageVolume = averageOf(volumeWindow);
   const currentVolume = volumes[last] ?? 0;
-  const relativeVolume = averageVolume > 0 ? currentVolume / averageVolume : NaN;
-  const volumeConfirmed = Number.isFinite(relativeVolume) && relativeVolume >= 1.2;
+  const relativeVolume =
+    averageVolume > 0 ? currentVolume / averageVolume : NaN;
+  const volumeConfirmed =
+    Number.isFinite(relativeVolume) && relativeVolume >= 1.2;
 
   const rsiValue = rsi(closes)[last] ?? NaN;
-  const rsiFavorable = Number.isFinite(rsiValue) && rsiValue >= 50 && rsiValue <= 72;
+  const rsiFavorable =
+    Number.isFinite(rsiValue) && rsiValue >= 50 && rsiValue <= 72;
 
   const pivotHighs: number[] = [];
   const pivotLows: number[] = [];
@@ -372,11 +485,23 @@ export function analyzeDailySetup(
   for (let i = pivotStart; i <= last - 2; i += 1) {
     const high = highs[i];
     const low = lows[i];
-    if (!Number.isFinite(high) || !Number.isFinite(low) || high <= 0 || low <= 0) continue;
+    if (
+      !Number.isFinite(high) ||
+      !Number.isFinite(low) ||
+      high <= 0 ||
+      low <= 0
+    )
+      continue;
     const highIsPivot =
-      high >= highs[i - 1] && high >= highs[i - 2] && high >= highs[i + 1] && high >= highs[i + 2];
+      high >= highs[i - 1] &&
+      high >= highs[i - 2] &&
+      high >= highs[i + 1] &&
+      high >= highs[i + 2];
     const lowIsPivot =
-      low <= lows[i - 1] && low <= lows[i - 2] && low <= lows[i + 1] && low <= lows[i + 2];
+      low <= lows[i - 1] &&
+      low <= lows[i - 2] &&
+      low <= lows[i + 1] &&
+      low <= lows[i + 2];
     if (highIsPivot) pivotHighs.push(high);
     if (lowIsPivot) pivotLows.push(low);
   }
@@ -386,9 +511,13 @@ export function analyzeDailySetup(
   const previousLow = pivotLows.at(-2);
   const latestLow = pivotLows.at(-1);
   const higherHigh =
-    previousHigh !== undefined && latestHigh !== undefined && latestHigh > previousHigh * 1.002;
+    previousHigh !== undefined &&
+    latestHigh !== undefined &&
+    latestHigh > previousHigh * 1.002;
   const higherLow =
-    previousLow !== undefined && latestLow !== undefined && latestLow > previousLow * 1.002;
+    previousLow !== undefined &&
+    latestLow !== undefined &&
+    latestLow > previousLow * 1.002;
 
   return {
     dailyTrend,

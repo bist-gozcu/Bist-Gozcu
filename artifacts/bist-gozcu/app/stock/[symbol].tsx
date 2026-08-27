@@ -33,10 +33,12 @@ import {
   StockOverview,
 } from "@/utils/yahooFinance";
 import {
+  analyzeOpeningBehavior,
   analyzeStock,
   AnalysisResult,
   atr,
   macd,
+  OpeningAnalysisResult,
   rsi,
   sma,
 } from "@/utils/indicators";
@@ -178,10 +180,13 @@ export default function StockDetailScreen() {
   const { alerts, addAlert, removeAlert } = useAlerts();
   const [chart, setChart] = useState<ChartResult | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [openingAnalysis, setOpeningAnalysis] =
+    useState<OpeningAnalysisResult | null>(null);
   const [stockOverview, setStockOverview] = useState<StockOverview | null>(
     null,
   );
   const [loadingOverview, setLoadingOverview] = useState(true);
+  const [loadingOpeningAnalysis, setLoadingOpeningAnalysis] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
   const [range, setRange] = useState<ChartRange>("1d");
   const [chartType, setChartType] = useState<"line" | "candle">("candle");
@@ -198,10 +203,6 @@ export default function StockDetailScreen() {
   const fav = favorites.includes(symbolText);
   const watched = watchlist.includes(symbolText);
   const session = getMarketSession();
-  const tradingViewUrl = symbolText
-    ? `https://www.tradingview.com/symbols/BIST-${encodeURIComponent(symbolText)}/financials-statistics-and-ratios/`
-    : "";
-
   useEffect(() => {
     if (!symbol) return;
     setLoadingOverview(true);
@@ -225,6 +226,30 @@ export default function StockDetailScreen() {
       setLoadingChart(false);
     });
   }, [symbol, range]);
+
+  // Son 50 işlem gününde açılışların önceki kapanışa göre yönünü hesaplar.
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+    setLoadingOpeningAnalysis(true);
+    setOpeningAnalysis(null);
+    fetchChartData(symbol, "3mo")
+      .then((data) => {
+        if (cancelled) return;
+        setOpeningAnalysis(
+          data ? analyzeOpeningBehavior(data.opens, data.closes, 50) : null,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOpeningAnalysis(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOpeningAnalysis(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol]);
 
   const handleFav = () => {
     if (Platform.OS !== "web")
@@ -462,53 +487,8 @@ export default function StockDetailScreen() {
   })();
 
   const activeAlerts = symbolAlerts.filter((a) => !a.triggered);
-  const fundamentals = stockOverview?.fundamentals;
-  const formatRatio = (value: number | null | undefined, suffix = "") =>
-    value == null ? "—" : `${value.toFixed(2)}${suffix}`;
-  const formatRatioPercent = (value: number | null | undefined) =>
-    value == null ? "—" : `${(value * 100).toFixed(1)}%`;
-  const targetUpside =
-    price != null && fundamentals?.targetMeanPrice != null && price > 0
-      ? ((fundamentals.targetMeanPrice - price) / price) * 100
-      : null;
-  const ratioParts = [
-    fundamentals?.trailingPE != null
-      ? `F/K ${fundamentals.trailingPE.toFixed(2)}`
-      : null,
-    fundamentals?.priceToBook != null
-      ? `PD/DD ${fundamentals.priceToBook.toFixed(2)}`
-      : null,
-    fundamentals?.returnOnEquity != null
-      ? `ROE ${(fundamentals.returnOnEquity * 100).toFixed(1)}%`
-      : null,
-    fundamentals?.debtToEquity != null
-      ? `Borç/özsermaye ${fundamentals.debtToEquity.toFixed(1)}`
-      : null,
-  ].filter((part): part is string => part != null);
-  const hasFundamentalData =
-    ratioParts.length > 0 ||
-    fundamentals?.priceToSales != null ||
-    fundamentals?.enterpriseToEbitda != null;
-  const valuationTitle =
-    targetUpside != null
-      ? targetUpside >= 15
-        ? "Hedef fiyata göre iskontolu görünüyor"
-        : targetUpside <= -15
-          ? "Hedef fiyata göre primli görünüyor"
-          : "Hedef fiyata göre dengeli görünüyor"
-      : fundamentals?.priceToBook != null && fundamentals.priceToBook < 1
-        ? "PD/DD düşük; tek başına ucuzluk kanıtı değil"
-        : fundamentals?.priceToBook != null && fundamentals.priceToBook > 3
-          ? "PD/DD yüksek; primli değerleme riski var"
-          : hasFundamentalData
-            ? "Temel oranlar mevcut; sektörle birlikte değerlendirilmeli"
-            : "Göreli değerleme için veri bekleniyor";
-  const valuationText =
-    targetUpside != null
-      ? `${ratioParts.length > 0 ? `${ratioParts.join(" · ")}. ` : ""}Analist ortalama hedefi ₺${fundamentals?.targetMeanPrice?.toFixed(2)}; mevcut fiyata göre ${targetUpside >= 0 ? "+" : ""}${targetUpside.toFixed(1)}% fark var. Bu hedef garanti değildir ve analist kapsamı ${fundamentals?.analystCount ?? "bilinmiyor"} kişi olabilir.`
-      : hasFundamentalData
-        ? `${ratioParts.join(" · ") || "Ek temel oranlar mevcut"}. Ucuz/pahalı yorumu için sektör medyanı, borçluluk, kârlılık ve finansal dönem birlikte değerlendirilmelidir.`
-        : "Temel oranlar bu kaynakta bulunamadı; bu nedenle ucuz veya pahalı hükmü verilmiyor.";
+  const formatOpeningPercent = (value: number | null) =>
+    value == null ? "—" : `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 
   const sessionLabel =
     session === "open"
@@ -1152,110 +1132,122 @@ export default function StockDetailScreen() {
           )}
         </View>
 
-        {/* Relative valuation */}
+        {/* 50 günlük açılış davranışı */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Temel / Göreli Değerleme
+            Son 50 İşlem Gününde Açılış Davranışı
           </Text>
           <View
             style={[
-              styles.valuationCard,
+              styles.openingCard,
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
-            <Text
-              style={[
-                styles.valuationTitle,
-                {
-                  color:
-                    targetUpside != null && targetUpside >= 15
-                      ? colors.up
-                      : targetUpside != null && targetUpside <= -15
-                        ? colors.down
-                        : colors.foreground,
-                },
-              ]}
-            >
-              {valuationTitle}
-            </Text>
-            <Text
-              style={[styles.valuationText, { color: colors.mutedForeground }]}
-            >
-              {loadingOverview ? "Temel oranlar yükleniyor…" : valuationText}
-            </Text>
-            <View style={styles.fundamentalGrid}>
-              <StatRow
-                label="F/K"
-                value={formatRatio(fundamentals?.trailingPE)}
-              />
-              <StatRow
-                label="İleri F/K"
-                value={formatRatio(fundamentals?.forwardPE)}
-              />
-              <StatRow
-                label="PD/DD"
-                value={formatRatio(fundamentals?.priceToBook)}
-              />
-              <StatRow
-                label="PD/S"
-                value={formatRatio(fundamentals?.priceToSales)}
-              />
-              <StatRow
-                label="Özsermaye kârlılığı"
-                value={formatRatioPercent(fundamentals?.returnOnEquity)}
-              />
-              <StatRow
-                label="Borç/Özsermaye"
-                value={formatRatio(fundamentals?.debtToEquity)}
-              />
-            </View>
-            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>
-              F/K ve PD/DD gibi oranlar kaynakta bulunamazsa “—” gösterilir;
-              sektör karşılaştırması olmadan kesin ucuz/pahalı kararı verilmez.
-            </Text>
-            <Text style={[styles.dataBasis, { color: colors.mutedForeground }]}>
-              Kaynak: {stockOverview?.source ?? "Overview verisi bekleniyor"}
-              {fundamentals?.asOf
-                ? ` · Finansal dönem: ${fundamentals.asOf}`
-                : ""}
-            </Text>
+            {loadingOpeningAnalysis ? (
+              <View style={styles.openingLoading}>
+                <ActivityIndicator color={colors.primary} />
+                <Text
+                  style={[
+                    styles.openingMuted,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Açılış verileri hesaplanıyor…
+                </Text>
+              </View>
+            ) : openingAnalysis ? (
+              <>
+                <Text
+                  style={[
+                    styles.openingTitle,
+                    {
+                      color:
+                        openingAnalysis.bias === "up"
+                          ? colors.up
+                          : openingAnalysis.bias === "down"
+                            ? colors.down
+                            : colors.foreground,
+                    },
+                  ]}
+                >
+                  {openingAnalysis.bias === "up"
+                    ? "Açılışlar çoğunlukla yukarı yönlü"
+                    : openingAnalysis.bias === "down"
+                      ? "Açılışlar çoğunlukla aşağı yönlü"
+                      : "Açılış yönü dengeli"}
+                </Text>
+                <Text
+                  style={[
+                    styles.openingText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Son {openingAnalysis.validDays} işlem gününün{" "}
+                  {openingAnalysis.upDays} gününde önceki kapanışın üstünde,{" "}
+                  {openingAnalysis.downDays} gününde altında açıldı.
+                </Text>
+                <View style={styles.openingGrid}>
+                  <StatRow
+                    label="Yukarı açılış"
+                    value={`${openingAnalysis.upDays} gün`}
+                    valueColor={colors.up}
+                  />
+                  <StatRow
+                    label="Aşağı açılış"
+                    value={`${openingAnalysis.downDays} gün`}
+                    valueColor={colors.down}
+                  />
+                  <StatRow
+                    label="En yüksek açılış farkı"
+                    value={formatOpeningPercent(openingAnalysis.maxGapPercent)}
+                    valueColor={colors.up}
+                  />
+                  <StatRow
+                    label="En düşük açılış farkı"
+                    value={formatOpeningPercent(openingAnalysis.minGapPercent)}
+                    valueColor={colors.down}
+                  />
+                  <StatRow
+                    label="Ortalama açılış farkı"
+                    value={formatOpeningPercent(
+                      openingAnalysis.averageGapPercent,
+                    )}
+                  />
+                  <StatRow
+                    label="Son açılış farkı"
+                    value={formatOpeningPercent(openingAnalysis.lastGapPercent)}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.openingNote,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Hesaplama, her günün açılışını bir önceki işlem gününün
+                  kapanışıyla karşılaştırır. Bu istatistik tek başına trend veya
+                  alım-satım sinyali değildir; açılışta oluşan yön eğilimini
+                  gösterir.
+                </Text>
+                <Text
+                  style={[
+                    styles.openingNote,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  Son 5 gün: {openingAnalysis.recentUpDays} yukarı,{" "}
+                  {openingAnalysis.recentDownDays} aşağı açılış.
+                </Text>
+              </>
+            ) : (
+              <Text
+                style={[styles.openingText, { color: colors.mutedForeground }]}
+              >
+                Son 50 işlem gününe ait yeterli açılış verisi alınamadı; bu
+                nedenle yön yorumu yapılmıyor.
+              </Text>
+            )}
           </View>
-          {tradingViewUrl && (
-            <Pressable
-              onPress={() => {
-                void Linking.openURL(tradingViewUrl).catch(() => {
-                  Alert.alert(
-                    "Bağlantı açılamadı",
-                    "TradingView sayfası açılamadı. İnternet bağlantınızı kontrol edin.",
-                  );
-                });
-              }}
-              style={({ pressed }) => [
-                styles.externalLinkBtn,
-                {
-                  backgroundColor: colors.secondary,
-                  borderColor: colors.border,
-                },
-                pressed && { opacity: 0.7 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={`${symbolText} için TradingView finansal oranlarını aç`}
-            >
-              <Text
-                style={[styles.externalLinkText, { color: colors.primary }]}
-              >
-                TradingView’da temel analizi aç
-              </Text>
-              <Text
-                style={[
-                  styles.externalLinkHint,
-                  { color: colors.mutedForeground },
-                ]}
-              >
-                Oranlar ve finansal tablolar TradingView’da görüntülenir.
-              </Text>
-            </Pressable>
-          )}
         </View>
 
         {/* Hisse-specific morning report */}
@@ -2046,45 +2038,41 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   reportText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 21 },
-  valuationCard: {
+  openingCard: {
     borderRadius: 12,
     padding: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  valuationTitle: {
+  openingLoading: {
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+  },
+  openingMuted: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  openingTitle: {
     fontSize: 14,
     fontFamily: "Inter_700Bold",
     lineHeight: 20,
     marginBottom: 5,
   },
-  valuationText: {
+  openingText: {
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     lineHeight: 18,
     marginBottom: 8,
   },
-  fundamentalGrid: {
+  openingGrid: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(127,127,127,0.2)",
     marginTop: 4,
     paddingTop: 4,
   },
-  dataBasis: {
+  openingNote: {
     fontSize: 10,
     lineHeight: 15,
     fontFamily: "Inter_400Regular",
     marginTop: 8,
   },
-  externalLinkBtn: {
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 10,
-    gap: 3,
-  },
-  externalLinkText: { fontSize: 12, fontFamily: "Inter_700Bold" },
-  externalLinkHint: { fontSize: 10, fontFamily: "Inter_400Regular" },
   stockNewsCard: {
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
