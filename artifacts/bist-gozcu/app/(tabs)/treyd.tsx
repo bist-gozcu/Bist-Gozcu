@@ -38,6 +38,10 @@ export default function TreydScreen() {
     () => results.filter((item) => item.radarDurumu === "gun_ici_izleme"),
     [results],
   );
+  const earlyMovementResults = useMemo(
+    () => results.filter((item) => item.radarDurumu === "erken_hareket"),
+    [results],
+  );
   const sections = useMemo(() => {
     const nextSections: Array<{
       key: string;
@@ -50,6 +54,12 @@ export default function TreydScreen() {
         title: "Günlük Kapanış Teyitli",
         data: dailyResults,
       });
+    if (earlyMovementResults.length > 0)
+      nextSections.push({
+        key: "early",
+        title: "Erken Hareket Radarı",
+        data: earlyMovementResults,
+      });
     if (intradayResults.length > 0)
       nextSections.push({
         key: "intraday",
@@ -57,7 +67,7 @@ export default function TreydScreen() {
         data: intradayResults,
       });
     return nextSections;
-  }, [dailyResults, intradayResults]);
+  }, [dailyResults, earlyMovementResults, intradayResults]);
 
   const scan = useCallback(async () => {
     if (!data || isScanning || isRefreshing) return;
@@ -177,9 +187,10 @@ export default function TreydScreen() {
         ]}
       >
         <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>
-          Günlük Kapanış Teyitli bölümü tamamlanmış günlük mumlara dayanır. Gün
-          İçi İzleme adayları kapanışta bozulabilir; veri eski veya belirsizse
-          yeni aday ve bildirim üretilmez.
+          Günlük Kapanış Teyitli bölümü tamamlanmış günlük mumlara dayanır.
+          Erken Hareket Radarı, ani ivmeyi daha erken gösterir ancak teyitli
+          trend değildir. Gün İçi İzleme adayları kapanışta bozulabilir; eski
+          veya belirsiz veriyle yeni bildirim üretilmez.
         </Text>
       </View>
 
@@ -250,9 +261,11 @@ export default function TreydScreen() {
                 yuksekTepe={item.yuksekTepe}
                 yapiTeyitli={item.yapiTeyitli}
                 teyitler={item.teyitler}
-                radarDurumu={
-                  section.key === "daily" ? "gunluk_teyitli" : "gun_ici_izleme"
-                }
+                radarDurumu={item.radarDurumu}
+                erkenHareketSkoru={item.erkenHareketSkoru}
+                erkenHareketEtiketi={item.erkenHareketEtiketi}
+                erkenHareketNedenleri={item.erkenHareketNedenleri}
+                piyasaHavasi={item.piyasaHavasi}
               />
             </View>
           </View>

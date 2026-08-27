@@ -55,7 +55,7 @@ export interface RadarNotificationCandidate {
   changePercent: number;
   teyitSayisi: number;
   teyitler: string[];
-  radarDurumu: "gunluk_teyitli" | "gun_ici_izleme";
+  radarDurumu: "gunluk_teyitli" | "gun_ici_izleme" | "erken_hareket";
   veriKalitesi: DataFreshness;
 }
 

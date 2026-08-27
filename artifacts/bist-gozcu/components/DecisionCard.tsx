@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import type { ErkenHareketEtiketi, PiyasaHavasi } from "@/services/treydMotoru";
 interface DecisionCardProps {
   sembol: string;
   skor: number;
@@ -23,7 +24,11 @@ interface DecisionCardProps {
   yuksekTepe?: boolean;
   yapiTeyitli?: boolean;
   teyitler?: string[];
-  radarDurumu?: "gunluk_teyitli" | "gun_ici_izleme";
+  radarDurumu?: "gunluk_teyitli" | "gun_ici_izleme" | "erken_hareket";
+  erkenHareketSkoru?: number;
+  erkenHareketEtiketi?: ErkenHareketEtiketi;
+  erkenHareketNedenleri?: string[];
+  piyasaHavasi?: PiyasaHavasi;
 }
 
 function SignalChip({
@@ -77,6 +82,10 @@ export default function DecisionCard({
   yapiTeyitli = false,
   teyitler = [],
   radarDurumu = "gun_ici_izleme",
+  erkenHareketSkoru = 0,
+  erkenHareketEtiketi = "NORMAL",
+  erkenHareketNedenleri = [],
+  piyasaHavasi = "Piyasa desteği zayıf",
 }: DecisionCardProps) {
   const colors = useColors();
   const hasProximityBar =
@@ -113,9 +122,19 @@ export default function DecisionCard({
   const radarLabel =
     radarDurumu === "gunluk_teyitli"
       ? "Günlük kapanış teyitli"
-      : "Gün içi izleme";
+      : radarDurumu === "erken_hareket"
+        ? "Erken hareket radarı"
+        : "Gün içi izleme";
   const radarColor =
     radarDurumu === "gunluk_teyitli" ? colors.up : colors.primary;
+  const showEarlyMovement =
+    Number.isFinite(erkenHareketSkoru) && erkenHareketSkoru >= 30;
+  const earlyMovementColor =
+    erkenHareketSkoru >= 70
+      ? colors.up
+      : erkenHareketSkoru >= 50
+        ? colors.primary
+        : colors.neutral;
 
   const dailyChange = Number.isFinite(gunlukDegisim)
     ? (gunlukDegisim as number)
@@ -171,6 +190,45 @@ export default function DecisionCard({
           </Text>
         </View>
       </View>
+
+      {showEarlyMovement && (
+        <View style={styles.earlyMovementRow}>
+          <View
+            style={[
+              styles.earlyMovementBadge,
+              { backgroundColor: `${earlyMovementColor}18` },
+            ]}
+          >
+            <Text
+              style={[styles.earlyMovementText, { color: earlyMovementColor }]}
+            >
+              {erkenHareketEtiketi}
+            </Text>
+          </View>
+          <Text
+            style={[styles.earlyMovementScore, { color: earlyMovementColor }]}
+          >
+            {erkenHareketSkoru}/100
+          </Text>
+        </View>
+      )}
+      {showEarlyMovement && erkenHareketNedenleri.length > 0 && (
+        <View style={styles.earlyReasons}>
+          <Text
+            style={[styles.earlyContext, { color: colors.mutedForeground }]}
+          >
+            {piyasaHavasi}
+          </Text>
+          {erkenHareketNedenleri.slice(0, 2).map((reason) => (
+            <Text
+              key={`early-${reason}`}
+              style={[styles.earlyReason, { color: colors.mutedForeground }]}
+            >
+              {reason}
+            </Text>
+          ))}
+        </View>
+      )}
 
       <View style={styles.confirmationRow}>
         <View
@@ -295,6 +353,23 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   statusText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  earlyMovementRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  earlyMovementBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    flexShrink: 1,
+  },
+  earlyMovementText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  earlyMovementScore: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  earlyReasons: { gap: 2 },
+  earlyContext: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  earlyReason: { fontSize: 9, lineHeight: 13, fontFamily: "Inter_400Regular" },
   confirmationRow: {
     flexDirection: "row",
     alignItems: "center",
