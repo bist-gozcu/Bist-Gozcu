@@ -18,7 +18,6 @@ import {
 } from "@/services/treydMotoru";
 import { isPiyasaAcik } from "@/utils/seansKontrol";
 import { fireRadarNotifications } from "@/contexts/AlertContext";
-import { getFreshnessLabel } from "@/utils/yahooFinance";
 
 export default function TreydScreen() {
   const colors = useColors();
@@ -59,37 +58,6 @@ export default function TreydScreen() {
       });
     return nextSections;
   }, [dailyResults, intradayResults]);
-  const dataStatus = useMemo(() => {
-    if (!data || data.length === 0)
-      return { label: "Veri bekleniyor", detail: "Radar yeni aday üretmiyor." };
-    const hasUnknown = data.some(
-      (item) =>
-        !item.veriKalitesi ||
-        item.veriKalitesi === "unknown" ||
-        item.veriKalitesi === "stale",
-    );
-    const hasShortDelay = data.some(
-      (item) => item.veriKalitesi === "slightly_delayed",
-    );
-    if (hasUnknown)
-      return {
-        label: "Veri riskli",
-        detail:
-          "Eski veya zamanı doğrulanamayan quote’lar aday filtresine alınmıyor.",
-      };
-    if (hasShortDelay)
-      return {
-        label: "Kısa gecikmeli",
-        detail: "Yeni telefon bildirimi kapalı; sonuçlar izleme amaçlıdır.",
-      };
-    const sampleFreshness = data[0]?.veriKalitesi ?? "unknown";
-    return {
-      label: getFreshnessLabel(sampleFreshness),
-      detail: marketOpen
-        ? "Kaynak zamanı yeni; gerçek zamanlı olduğu doğrulanmadı."
-        : "Piyasa kapalı; analiz son kapanış referansına göre.",
-    };
-  }, [data, marketOpen]);
 
   const scan = useCallback(async () => {
     if (!data || isScanning || isRefreshing) return;
@@ -201,25 +169,6 @@ export default function TreydScreen() {
 
       <View
         style={[
-          styles.dataBanner,
-          {
-            backgroundColor: `${dataStatus.label === "Veri riskli" ? colors.down : colors.neutral}12`,
-            borderColor: `${dataStatus.label === "Veri riskli" ? colors.down : colors.neutral}35`,
-          },
-        ]}
-      >
-        <Text style={[styles.dataBannerTitle, { color: colors.foreground }]}>
-          Veri durumu: {dataStatus.label}
-        </Text>
-        <Text
-          style={[styles.dataBannerText, { color: colors.mutedForeground }]}
-        >
-          {dataStatus.detail}
-        </Text>
-      </View>
-
-      <View
-        style={[
           styles.notice,
           {
             backgroundColor: `${colors.neutral}12`,
@@ -304,9 +253,6 @@ export default function TreydScreen() {
                 radarDurumu={
                   section.key === "daily" ? "gunluk_teyitli" : "gun_ici_izleme"
                 }
-                veriKalitesi={item.veriKalitesi}
-                veriUyarisi={item.veriUyarisi}
-                piyasaZamani={item.piyasaZamani}
               />
             </View>
           </View>
@@ -410,21 +356,6 @@ const styles = StyleSheet.create({
   },
   sessionDot: { width: 7, height: 7, borderRadius: 4 },
   sessionText: { fontSize: 12, fontFamily: "Inter_500Medium" },
-  dataBanner: {
-    marginHorizontal: 12,
-    marginTop: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 2,
-  },
-  dataBannerTitle: { fontSize: 11, fontFamily: "Inter_700Bold" },
-  dataBannerText: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontFamily: "Inter_400Regular",
-  },
   notice: {
     marginHorizontal: 12,
     marginTop: 8,

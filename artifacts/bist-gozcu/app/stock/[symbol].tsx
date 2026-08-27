@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Linking,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -23,14 +22,11 @@ import { useWatchlist } from "@/contexts/WatchlistContext";
 import { AlertType, useAlerts } from "@/contexts/AlertContext";
 import {
   fetchChartData,
-  fetchStockOverview,
+  fetchSingleQuote,
   ChartResult,
   ChartRange,
-  formatMarketTimestamp,
-  getFreshnessLabel,
-  getFreshnessWarning,
   getMarketSession,
-  StockOverview,
+  QuoteData,
 } from "@/utils/yahooFinance";
 import {
   analyzeOpeningBehavior,
@@ -182,10 +178,7 @@ export default function StockDetailScreen() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [openingAnalysis, setOpeningAnalysis] =
     useState<OpeningAnalysisResult | null>(null);
-  const [stockOverview, setStockOverview] = useState<StockOverview | null>(
-    null,
-  );
-  const [loadingOverview, setLoadingOverview] = useState(true);
+  const [detailQuote, setDetailQuote] = useState<QuoteData | null>(null);
   const [loadingOpeningAnalysis, setLoadingOpeningAnalysis] = useState(true);
   const [loadingChart, setLoadingChart] = useState(true);
   const [range, setRange] = useState<ChartRange>("1d");
@@ -198,17 +191,21 @@ export default function StockDetailScreen() {
   const [infoKey, setInfoKey] = useState<string | null>(null);
 
   const symbolText = symbol?.toUpperCase().trim() ?? "";
-  const quote = quotes[symbol ?? ""] ?? stockOverview?.quote;
+  const quote = quotes[symbol ?? ""] ?? detailQuote;
   const meta = getStockMeta(symbol ?? "");
   const fav = favorites.includes(symbolText);
   const watched = watchlist.includes(symbolText);
   const session = getMarketSession();
   useEffect(() => {
     if (!symbol) return;
-    setLoadingOverview(true);
-    fetchStockOverview(symbol)
-      .then((data) => setStockOverview(data))
-      .finally(() => setLoadingOverview(false));
+    let cancelled = false;
+    setDetailQuote(null);
+    fetchSingleQuote(symbol).then((data) => {
+      if (!cancelled) setDetailQuote(data);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [symbol]);
 
   useEffect(() => {
@@ -397,99 +394,9 @@ export default function StockDetailScreen() {
     return avg * 100;
   })();
 
-  const morningReport = (() => {
-    if (!analysis || price == null) return "Veri yükleniyor...";
-    const lines: string[] = [];
-
-    const signalLine =
-      analysis.signal === "buy"
-        ? `${symbol} teknik tabloda ALIM tarafında: ${analysis.reasons.length} gösterge fiyatın lehine.`
-        : analysis.signal === "sell"
-          ? `${symbol} teknik tabloda SATIM baskısı altında: ${analysis.reasons.length} gösterge fiyatın aleyhine.`
-          : `${symbol} şu an nötr bölgede, göstergeler net bir yön vermiyor.`;
-    lines.push(signalLine);
-
-    if (latestMa20 != null && latestMa50 != null) {
-      const gapPct = ((latestMa20 - latestMa50) / latestMa50) * 100;
-      if (Math.abs(gapPct) < 0.3) {
-        lines.push(
-          `20 ve 50 günlük ortalamalar birbirine çok yakın (%${Math.abs(gapPct).toFixed(2)} fark), yön arayışı sürüyor.`,
-        );
-      } else if (latestMa20 > latestMa50) {
-        lines.push(
-          `20 günlük ortalama, 50 günlüğün %${gapPct.toFixed(1)} üzerinde; orta vadeli trend yukarı eğilimli.`,
-        );
-      } else {
-        lines.push(
-          `20 günlük ortalama, 50 günlüğün %${Math.abs(gapPct).toFixed(1)} altında; orta vadeli trend baskı altında.`,
-        );
-      }
-      if (price > latestMa20 && price > latestMa50) {
-        lines.push(
-          `Fiyat her iki ortalamanın da üzerinde seyrediyor, kısa vadeli momentum güçlü.`,
-        );
-      } else if (price < latestMa20 && price < latestMa50) {
-        lines.push(
-          `Fiyat her iki ortalamanın da altında, kısa vadeli momentum zayıf.`,
-        );
-      }
-    }
-
-    if (latestRsi != null) {
-      if (latestRsi >= 70)
-        lines.push(
-          `RSI ${latestRsi.toFixed(0)} ile aşırı alım bölgesinde, kısa vadeli geri çekilme riski artabilir.`,
-        );
-      else if (latestRsi <= 30)
-        lines.push(
-          `RSI ${latestRsi.toFixed(0)} ile aşırı satım bölgesinde, tepki alımları gelebilir.`,
-        );
-      else if (latestRsi > 55)
-        lines.push(
-          `RSI ${latestRsi.toFixed(0)} seviyesinde, alıcı baskısı hafif üstün.`,
-        );
-      else if (latestRsi < 45)
-        lines.push(
-          `RSI ${latestRsi.toFixed(0)} seviyesinde, satıcı baskısı hafif üstün.`,
-        );
-    }
-
-    if (latestMacd != null && latestHist != null) {
-      if (latestHist > 0 && latestMacd > 0)
-        lines.push(
-          `MACD pozitif bölgede ve histogram artıda, momentum yukarı yönlü.`,
-        );
-      else if (latestHist < 0 && latestMacd < 0)
-        lines.push(
-          `MACD negatif bölgede ve histogram ekside, momentum aşağı yönlü.`,
-        );
-      else if (latestHist > 0)
-        lines.push(
-          `MACD histogramı pozitife döndü, olası bir toparlanma sinyali.`,
-        );
-      else if (latestHist < 0)
-        lines.push(`MACD histogramı negatife döndü, momentum kayboluyor.`);
-    }
-
-    if (latestAtr != null && price > 0) {
-      const atrPct = (latestAtr / price) * 100;
-      if (atrPct > 3)
-        lines.push(
-          `ATR bazlı volatilite yüksek (%${atrPct.toFixed(1)}), pozisyon boyutunu buna göre ayarlayın.`,
-        );
-    } else if (volatility != null && volatility > 2) {
-      lines.push(
-        `Son 20 günün ortalama günlük hareketi %${volatility.toFixed(1)}, dalgalanma yüksek.`,
-      );
-    }
-
-    return lines.filter(Boolean).join("\n");
-  })();
-
   const activeAlerts = symbolAlerts.filter((a) => !a.triggered);
   const formatOpeningPercent = (value: number | null) =>
     value == null ? "—" : `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
-
   const sessionLabel =
     session === "open"
       ? "Açık"
@@ -498,19 +405,6 @@ export default function StockDetailScreen() {
         : session === "post"
           ? "Kapanış sonrası"
           : "Kapalı";
-  const quoteFreshness = quote?.freshness ?? "unknown";
-  const quoteFreshnessLabel = quote
-    ? getFreshnessLabel(quoteFreshness)
-    : "Veri bekleniyor";
-  const quoteFreshnessWarning = quote
-    ? getFreshnessWarning(quoteFreshness)
-    : "Fiyat verisi alınamadı; karar için yeterli veri yok.";
-  const quoteFreshnessColor =
-    quoteFreshness === "fresh" || quoteFreshness === "closed_reference"
-      ? colors.up
-      : quoteFreshness === "slightly_delayed"
-        ? colors.neutral
-        : colors.down;
 
   const rsiColor =
     latestRsi == null
@@ -653,32 +547,6 @@ export default function StockDetailScreen() {
                 {sessionLabel}
               </Text>
             </View>
-            <Text
-              style={[
-                styles.quoteFreshnessLabel,
-                { color: quoteFreshnessColor },
-              ]}
-            >
-              Veri: {quoteFreshnessLabel}
-            </Text>
-            <Text
-              style={[
-                styles.quoteFreshnessWarning,
-                { color: colors.mutedForeground },
-              ]}
-            >
-              Kaynak {formatMarketTimestamp(quote?.marketTimestamp ?? null)}
-            </Text>
-            {quoteFreshnessWarning && quoteFreshness !== "fresh" && (
-              <Text
-                style={[
-                  styles.quoteFreshnessWarning,
-                  { color: quoteFreshnessColor },
-                ]}
-              >
-                {quoteFreshnessWarning}
-              </Text>
-            )}
           </View>
         </View>
 
@@ -1250,89 +1118,6 @@ export default function StockDetailScreen() {
           </View>
         </View>
 
-        {/* Hisse-specific morning report */}
-        <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Hisseye Özel Sabah Raporu
-          </Text>
-          <View
-            style={[
-              styles.reportCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Text
-              style={[styles.reportText, { color: colors.mutedForeground }]}
-            >
-              {morningReport}
-            </Text>
-          </View>
-        </View>
-
-        {/* Stock-specific news */}
-        <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Hisse Haberleri
-          </Text>
-          {loadingOverview ? (
-            <ActivityIndicator color={colors.primary} style={{ margin: 18 }} />
-          ) : stockOverview?.news.length ? (
-            <View
-              style={[
-                styles.stockNewsCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              {stockOverview.news.map((item, index) => (
-                <Pressable
-                  key={`${item.title}-${index}`}
-                  disabled={!item.link}
-                  onPress={() => item.link && Linking.openURL(item.link)}
-                  style={[
-                    styles.stockNewsRow,
-                    index > 0 && {
-                      borderTopWidth: StyleSheet.hairlineWidth,
-                      borderTopColor: colors.border,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.newsDot,
-                      { backgroundColor: colors.primary },
-                    ]}
-                  />
-                  <View style={styles.newsCopy}>
-                    <Text
-                      style={[styles.newsTitle, { color: colors.foreground }]}
-                      numberOfLines={3}
-                    >
-                      {item.title}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.newsMeta,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {item.publisher || "Kaynak belirtilmedi"}
-                      {item.providerPublishTime > 0
-                        ? ` · ${new Date(item.providerPublishTime * 1000).toLocaleDateString("tr-TR")}`
-                        : ""}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <Text
-              style={[styles.noNewsText, { color: colors.mutedForeground }]}
-            >
-              Bu hisse için kaynakta doğrulanmış haber bulunamadı.
-            </Text>
-          )}
-        </View>
-
         {/* Active Alerts */}
         {activeAlerts.length > 0 && (
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
@@ -1783,20 +1568,6 @@ const styles = StyleSheet.create({
   sessionRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   sessionDot: { width: 6, height: 6, borderRadius: 3 },
   sessionText: { fontSize: 12, fontFamily: "Inter_500Medium" },
-  quoteFreshnessLabel: {
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
-    marginTop: 8,
-    textAlign: "right",
-  },
-  quoteFreshnessWarning: {
-    fontSize: 9,
-    lineHeight: 13,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
-    maxWidth: 150,
-    textAlign: "right",
-  },
   chartModeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2032,11 +1803,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     marginTop: 2,
   },
-  reportCard: {
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
   reportText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 21 },
   openingCard: {
     borderRadius: 12,
@@ -2073,22 +1839,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginTop: 8,
   },
-  stockNewsCard: {
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-  },
-  stockNewsRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-    paddingVertical: 11,
-  },
-  newsDot: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
-  newsCopy: { flex: 1 },
-  newsTitle: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_600SemiBold" },
-  newsMeta: { fontSize: 10, marginTop: 4, fontFamily: "Inter_400Regular" },
-  noNewsText: { fontSize: 12, lineHeight: 18, fontFamily: "Inter_400Regular" },
   alertChip: {
     flexDirection: "row",
     alignItems: "center",

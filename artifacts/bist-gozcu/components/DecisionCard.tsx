@@ -1,12 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import {
-  DataFreshness,
-  formatMarketTimestamp,
-  getFreshnessLabel,
-} from "@/utils/yahooFinance";
-
 interface DecisionCardProps {
   sembol: string;
   skor: number;
@@ -30,9 +24,6 @@ interface DecisionCardProps {
   yapiTeyitli?: boolean;
   teyitler?: string[];
   radarDurumu?: "gunluk_teyitli" | "gun_ici_izleme";
-  veriKalitesi?: DataFreshness;
-  veriUyarisi?: string | null;
-  piyasaZamani?: number | null;
 }
 
 function SignalChip({
@@ -86,9 +77,6 @@ export default function DecisionCard({
   yapiTeyitli = false,
   teyitler = [],
   radarDurumu = "gun_ici_izleme",
-  veriKalitesi = "unknown",
-  veriUyarisi = null,
-  piyasaZamani = null,
 }: DecisionCardProps) {
   const colors = useColors();
   const hasProximityBar =
@@ -128,12 +116,6 @@ export default function DecisionCard({
       : "Gün içi izleme";
   const radarColor =
     radarDurumu === "gunluk_teyitli" ? colors.up : colors.primary;
-  const freshnessColor =
-    veriKalitesi === "fresh" || veriKalitesi === "closed_reference"
-      ? colors.up
-      : veriKalitesi === "slightly_delayed"
-        ? colors.neutral
-        : colors.down;
 
   const dailyChange = Number.isFinite(gunlukDegisim)
     ? (gunlukDegisim as number)
@@ -188,22 +170,7 @@ export default function DecisionCard({
             {radarLabel}
           </Text>
         </View>
-        <View style={styles.freshnessWrap}>
-          <Text style={[styles.freshnessText, { color: freshnessColor }]}>
-            {getFreshnessLabel(veriKalitesi)}
-          </Text>
-          <Text
-            style={[styles.timestampText, { color: colors.mutedForeground }]}
-          >
-            Kaynak {formatMarketTimestamp(piyasaZamani)}
-          </Text>
-        </View>
       </View>
-      {veriUyarisi && veriKalitesi !== "fresh" && (
-        <Text style={[styles.freshnessWarning, { color: freshnessColor }]}>
-          {veriUyarisi}
-        </Text>
-      )}
 
       <View style={styles.confirmationRow}>
         <View
@@ -328,23 +295,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   statusText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  freshnessWrap: { alignItems: "flex-end", flexShrink: 1 },
-  freshnessText: {
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
-    textAlign: "right",
-  },
-  timestampText: {
-    fontSize: 9,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
-    textAlign: "right",
-  },
-  freshnessWarning: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontFamily: "Inter_500Medium",
-  },
   confirmationRow: {
     flexDirection: "row",
     alignItems: "center",
