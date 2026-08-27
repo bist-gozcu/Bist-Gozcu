@@ -391,7 +391,7 @@ export default function StockDetailScreen() {
       })
       .slice(1);
     const avg = returns.reduce((a, b) => a + b, 0) / returns.length;
-    return avg * 100;
+    return avg > 0 ? avg * 100 : null;
   })();
 
   const activeAlerts = symbolAlerts.filter((a) => !a.triggered);
@@ -928,13 +928,17 @@ export default function StockDetailScreen() {
                   },
                   {
                     label: "ATR",
-                    val: latestAtr,
+                    val: latestAtr != null && latestAtr > 0 ? latestAtr : null,
                     sub: "Volatilite",
                     isAtr: true,
                   },
                 ].map((item, idx) => {
-                  if (item.val == null) return null;
-                  let valColor = colors.foreground;
+                  const itemValue = item.val;
+                  if (itemValue == null && !item.isAtr) return null;
+                  let valColor =
+                    itemValue == null
+                      ? colors.mutedForeground
+                      : colors.foreground;
                   if (item.isMacd)
                     valColor =
                       latestHist != null
@@ -942,13 +946,13 @@ export default function StockDetailScreen() {
                           ? colors.up
                           : colors.down
                         : colors.foreground;
-                  else if (item.isAtr)
+                  else if (item.isAtr && itemValue != null)
                     valColor =
-                      price != null && item.val / price > 0.03
+                      price != null && itemValue / price > 0.03
                         ? colors.neutral
                         : colors.foreground;
-                  else if (price != null)
-                    valColor = price > item.val ? colors.up : colors.down;
+                  else if (price != null && itemValue != null)
+                    valColor = price > itemValue ? colors.up : colors.down;
 
                   return (
                     <View
@@ -980,22 +984,26 @@ export default function StockDetailScreen() {
                         </Text>
                       </View>
                       <Text style={[styles.maValue, { color: valColor }]}>
-                        {item.isMacd
-                          ? item.val.toFixed(2)
-                          : `₺${item.val.toFixed(2)}`}
+                        {item.val == null
+                          ? "—"
+                          : item.isMacd
+                            ? item.val.toFixed(2)
+                            : `₺${item.val.toFixed(2)}`}
                       </Text>
                     </View>
                   );
                 })}
               </View>
 
-              {volatility != null && (
-                <StatRow
-                  label="Volatilite (20G)"
-                  value={`${volatility.toFixed(2)}%`}
-                  valueColor={volatility > 2 ? colors.neutral : undefined}
-                />
-              )}
+              <StatRow
+                label="Volatilite (20G)"
+                value={volatility != null ? `${volatility.toFixed(2)}%` : "—"}
+                valueColor={
+                  volatility != null && volatility > 2
+                    ? colors.neutral
+                    : undefined
+                }
+              />
             </>
           )}
         </View>

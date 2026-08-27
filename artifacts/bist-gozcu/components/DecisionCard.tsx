@@ -107,6 +107,8 @@ export default function DecisionCard({
     : null;
   const isStrongBuy = etiket === "GÜÇLÜ ALIM";
   const tagColor = isStrongBuy ? colors.up : colors.primary;
+  // Günlük trend etiketi yalnızca toplam teyit 5/6 seviyesine ulaştığında olumlu yazılır.
+  const dailyConfirmationComplete = teyitSayisi >= 5;
   const trendLabel =
     gunlukTrend === "up"
       ? "Trend yukarı"
@@ -235,7 +237,7 @@ export default function DecisionCard({
           style={[
             styles.confirmationBadge,
             {
-              backgroundColor: trendTeyitli
+              backgroundColor: dailyConfirmationComplete
                 ? `${colors.up}18`
                 : `${colors.neutral}18`,
             },
@@ -244,10 +246,12 @@ export default function DecisionCard({
           <Text
             style={[
               styles.confirmationText,
-              { color: trendTeyitli ? colors.up : colors.neutral },
+              { color: dailyConfirmationComplete ? colors.up : colors.neutral },
             ]}
           >
-            {trendTeyitli ? "Günlük trend teyitli" : "Günlük trend teyitsiz"}
+            {dailyConfirmationComplete
+              ? "Günlük trend teyitli"
+              : "Günlük trend teyitsiz"}
           </Text>
         </View>
         <Text

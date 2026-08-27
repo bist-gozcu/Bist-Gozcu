@@ -204,13 +204,6 @@ export default function TreydScreen() {
         showsVerticalScrollIndicator={false}
         refreshing={scanBusy}
         onRefresh={() => void refreshAndScan()}
-        ListHeaderComponent={
-          <View style={styles.intro}>
-            <Text style={[styles.introTitle, { color: colors.foreground }]}>
-              Trend Radarı
-            </Text>
-          </View>
-        }
         renderSectionHeader={({ section }) => (
           <View
             style={[
@@ -372,15 +365,14 @@ const styles = StyleSheet.create({
   notice: {
     marginHorizontal: 12,
     marginTop: 8,
+    marginBottom: 12,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
   },
   noticeText: { fontSize: 10, lineHeight: 14, fontFamily: "Inter_400Regular" },
-  listContent: { paddingHorizontal: 12 },
-  intro: { paddingVertical: 12 },
-  introTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  listContent: { paddingHorizontal: 12, paddingTop: 6 },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
