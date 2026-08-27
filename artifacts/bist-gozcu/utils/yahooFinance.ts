@@ -34,6 +34,20 @@ export type DataFreshness =
   | "unknown"
   | "closed_reference";
 
+/** Unix saniyesi veya ISO tarihini güvenli biçimde Unix saniyesine çevirir. */
+export function parseMarketTimestamp(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value > 1_000_000_000_000 ? value / 1000 : value;
+  }
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric > 1_000_000_000_000 ? numeric / 1000 : numeric;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed / 1000 : null;
+}
+
 export interface ChartResult {
   symbol: string;
   timestamps: number[];
@@ -361,9 +375,7 @@ function normalizeQuoteMetadata(
   | "dataSource"
 > {
   const fetchedAt = Date.now();
-  const rawTimestamp = Number(quote.regularMarketTime);
-  const marketTimestamp =
-    Number.isFinite(rawTimestamp) && rawTimestamp > 0 ? rawTimestamp : null;
+  const marketTimestamp = parseMarketTimestamp(quote.regularMarketTime);
   const rawDelay = Number(quote.exchangeDataDelayedBy);
   const delayedBySeconds =
     Number.isFinite(rawDelay) && rawDelay >= 0 ? rawDelay : null;

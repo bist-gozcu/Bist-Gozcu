@@ -6,6 +6,7 @@ import {
   classifyDataFreshness,
   DataFreshness,
   getFreshnessWarning,
+  parseMarketTimestamp,
   fetchBatchQuotes,
 } from "@/utils/yahooFinance";
 
@@ -95,14 +96,9 @@ const normalizeQuote = (quote: QuoteRecord): Hisse => {
   const veriCekilmeZamani =
     parseTRNumber(quote.fetchedAt as string | number | null | undefined) ||
     Date.now();
-  const rawPiyasaZamani = parseTRNumber(
-    (quote.marketTimestamp ?? quote.regularMarketTime) as
-      | string
-      | number
-      | null
-      | undefined,
+  const piyasaZamani = parseMarketTimestamp(
+    quote.marketTimestamp ?? quote.regularMarketTime,
   );
-  const piyasaZamani = rawPiyasaZamani > 0 ? rawPiyasaZamani : null;
   const rawFreshness =
     typeof quote.freshness === "string" ? quote.freshness : null;
   const veriKalitesi: DataFreshness =
