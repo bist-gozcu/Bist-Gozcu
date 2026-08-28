@@ -179,25 +179,42 @@ export default function TreydScreen() {
             BIST 30/50 içinde çoklu teyitli trend taraması
           </Text>
         </View>
-        <Pressable
-          onPress={() => {
-            void refreshAndScan();
-          }}
-          disabled={scanBusy}
-          style={[
-            styles.refreshButton,
-            { backgroundColor: scanBusy ? colors.border : colors.secondary },
-          ]}
-        >
-          <Text
-            style={[
-              styles.refreshText,
-              { color: scanBusy ? colors.mutedForeground : colors.primary },
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => router.push("/demo" as never)}
+            style={({ pressed }) => [
+              styles.demoHeaderButton,
+              {
+                backgroundColor: pressed
+                  ? `${colors.primary}30`
+                  : `${colors.primary}18`,
+              },
             ]}
           >
-            Yenile
-          </Text>
-        </Pressable>
+            <Text style={[styles.demoHeaderText, { color: colors.primary }]}>
+              Demo
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              void refreshAndScan();
+            }}
+            disabled={scanBusy}
+            style={[
+              styles.refreshButton,
+              { backgroundColor: scanBusy ? colors.border : colors.secondary },
+            ]}
+          >
+            <Text
+              style={[
+                styles.refreshText,
+                { color: scanBusy ? colors.mutedForeground : colors.primary },
+              ]}
+            >
+              Yenile
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <View
@@ -408,6 +425,13 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
   subtitle: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  demoHeaderButton: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  demoHeaderText: { fontSize: 12, fontFamily: "Inter_700Bold" },
   refreshButton: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
   refreshText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   sessionBanner: {
