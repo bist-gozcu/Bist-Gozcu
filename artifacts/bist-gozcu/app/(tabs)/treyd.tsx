@@ -18,6 +18,7 @@ import {
 } from "@/services/treydMotoru";
 import { isPiyasaAcik } from "@/utils/seansKontrol";
 import { fireRadarNotifications } from "@/contexts/AlertContext";
+import { useDemo } from "@/contexts/DemoContext";
 
 export default function TreydScreen() {
   const colors = useColors();
@@ -25,6 +26,7 @@ export default function TreydScreen() {
   const router = useRouter();
   const { data, isLoading, isFetching, error, manuelYenile } =
     useMarketData("bist100");
+  const { syncSignals } = useDemo();
   const [results, setResults] = useState<TreydSinyali[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -107,6 +109,49 @@ export default function TreydScreen() {
   useEffect(() => {
     if (data && !hasScanned && !isScanning && !isRefreshing) void scan();
   }, [data, hasScanned, isScanning, isRefreshing, scan]);
+
+  const demoSignalSignature = useMemo(
+    () =>
+      results
+        .filter(
+          (item) =>
+            item.radarDurumu === "gunluk_teyitli" ||
+            (item.radarDurumu === "erken_hareket" &&
+              item.erkenHareketSkoru >= 50),
+        )
+        .map(
+          (item) =>
+            `${item.sembol}-${item.radarDurumu}-${item.teyitSayisi}-${item.erkenHareketSkoru}`,
+        )
+        .join("|"),
+    [results],
+  );
+
+  useEffect(() => {
+    if (!hasScanned || isScanning || !demoSignalSignature) return;
+    const demoSignals = results
+      .filter(
+        (item) =>
+          item.radarDurumu === "gunluk_teyitli" ||
+          (item.radarDurumu === "erken_hareket" &&
+            item.erkenHareketSkoru >= 50),
+      )
+      .map((item) => ({
+        symbol: item.sembol,
+        price: item.fiyat,
+        signalType:
+          item.radarDurumu === "gunluk_teyitli"
+            ? ("gunluk_teyitli" as const)
+            : ("erken_hareket" as const),
+        score: item.erkenHareketSkoru,
+        confirmations: item.teyitSayisi,
+        dailyTrend: item.gunlukTrend,
+      }));
+    const prices = Object.fromEntries(
+      (data ?? []).map((item) => [item.sembol, item.fiyat]),
+    );
+    syncSignals(demoSignals, prices);
+  }, [data, demoSignalSignature, hasScanned, isScanning, results, syncSignals]);
 
   const sessionLabel = useMemo(
     () =>
@@ -192,6 +237,21 @@ export default function TreydScreen() {
           trend değildir. Gün İçi İzleme adayları kapanışta bozulabilir; eski
           veya belirsiz veriyle yeni bildirim üretilmez.
         </Text>
+        <Pressable
+          onPress={() => router.push("/demo" as never)}
+          style={({ pressed }) => [
+            styles.demoLink,
+            {
+              backgroundColor: pressed
+                ? `${colors.primary}30`
+                : `${colors.primary}18`,
+            },
+          ]}
+        >
+          <Text style={[styles.demoLinkText, { color: colors.primary }]}>
+            Demo hesabını aç
+          </Text>
+        </Pressable>
       </View>
 
       <SectionList<TreydSinyali>
@@ -372,6 +432,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   noticeText: { fontSize: 10, lineHeight: 14, fontFamily: "Inter_400Regular" },
+  demoLink: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    borderRadius: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  demoLinkText: { fontSize: 11, fontFamily: "Inter_700Bold" },
   listContent: { paddingHorizontal: 12, paddingTop: 6 },
   sectionHeader: {
     flexDirection: "row",

@@ -22,6 +22,19 @@ export type PiyasaHavasi =
   | "Sektör destekli"
   | "Hisseye özgü ayrışma"
   | "Piyasa desteği zayıf";
+export type KararDurumu =
+  | "İncelemeye değer"
+  | "Kapanışı bekle"
+  | "Günlük koşullar güçlü"
+  | "Hızlı yükseliş — dikkat"
+  | "Yeterli veri yok";
+export type KararDestegi = {
+  durum: KararDurumu;
+  ozet: string;
+  neden: string;
+  risk: string;
+  sonrakiAdim: string;
+};
 
 const TOTAL_CONFIRMATIONS = 6;
 const MOMENTUM_CONFIRMATIONS_REQUIRED = 5;
@@ -69,6 +82,8 @@ export type TreydSinyali = {
   veriKaynagi: string;
   /** Kaynağın fiyatı son güncellediği Unix zamanı. */
   piyasaZamani: number | null;
+  /** Teknik sonucu kullanıcı diline çeviren sade karar desteği. */
+  kararDestegi: KararDestegi;
 };
 
 type SectorSnapshot = {
@@ -188,6 +203,13 @@ const getQuoteCandidate = (
     veriUyarisi: hisse.veriUyarisi,
     veriKaynagi: hisse.veriKaynagi,
     piyasaZamani: hisse.piyasaZamani,
+    kararDestegi: {
+      durum: "Yeterli veri yok",
+      ozet: "Hareketi değerlendirmek için yeterli günlük veri henüz yok.",
+      neden: "Teknik şartlar güvenilir biçimde karşılaştırılamadı.",
+      risk: "Eksik veri yanlış yönlendirebilir.",
+      sonrakiAdim: "Yeni günlük veri geldikten sonra tekrar kontrol edin.",
+    },
   };
 };
 
@@ -433,6 +455,94 @@ const calculateEarlyMovement = (
   };
 };
 
+/** Teknik sonuçları kullanıcının karar sırasına uygun sade bir özete çevirir. */
+const buildDecisionSupport = (
+  candidate: TreydSinyali,
+  daily: ReturnType<typeof analyzeDailySetup>,
+  context: EarlyMovementContext,
+  earlyMovement: Pick<
+    TreydSinyali,
+    "erkenHareketSkoru" | "piyasaHavasi"
+  >,
+  opening: ReturnType<typeof analyzeOpeningBehavior>,
+  teyitSayisi: number,
+): KararDestegi => {
+  const dailyConfirmed = teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED;
+  const rapidMove =
+    candidate.degisimYuzde >= 5 || earlyMovement.erkenHareketSkoru >= 50;
+  const marketRelative = candidate.degisimYuzde - context.marketMedianChange;
+  const sector = getStockMeta(candidate.sembol)?.sector;
+  const sectorSnapshot = sector ? context.sectors.get(sector) : undefined;
+  const sectorRelative =
+    candidate.degisimYuzde -
+    (sectorSnapshot?.medianChange ?? context.marketMedianChange);
+  const resistanceDistance =
+    Number.isFinite(daily.resistance) && daily.resistance > 0
+      ? ((daily.resistance - candidate.fiyat) / candidate.fiyat) * 100
+      : null;
+
+  const durum: KararDurumu = dailyConfirmed
+    ? "Günlük koşullar güçlü"
+    : rapidMove
+      ? "Hızlı yükseliş — dikkat"
+      : teyitSayisi >= INTRADAY_MIN_CONFIRMATIONS
+        ? "Kapanışı bekle"
+        : earlyMovement.erkenHareketSkoru >= EARLY_RADAR_MIN_SCORE
+          ? "İncelemeye değer"
+          : "Yeterli veri yok";
+
+  const nedenler: string[] = [];
+  if (earlyMovement.erkenHareketSkoru >= EARLY_RADAR_MIN_SCORE)
+    nedenler.push(
+      `Erken hareket skoru ${earlyMovement.erkenHareketSkoru}/100`,
+    );
+  if (daily.volumeConfirmed || daily.relativeVolume >= 1.2)
+    nedenler.push(
+      `Hacim normalin ${daily.relativeVolume.toFixed(2)} katı seviyesinde`,
+    );
+  if (daily.resistanceBreakout)
+    nedenler.push("Fiyat direnç üzerinde kapanış yaptı");
+  if (marketRelative >= 1.5)
+    nedenler.push("Genel piyasaya göre daha güçlü hareket ediyor");
+  if (sectorRelative >= 1.5)
+    nedenler.push("Kendi sektörüne göre daha güçlü hareket ediyor");
+  if (opening && opening.recentUpDays > opening.recentDownDays)
+    nedenler.push(
+      `Son 5 açılışın ${opening.recentUpDays} tanesi yukarı yönlü`,
+    );
+  if (nedenler.length === 0) nedenler.push("Yeterli olumlu öncü işaret oluşmadı");
+
+  const riskler: string[] = [];
+  if (rapidMove)
+    riskler.push("Hareket hızlı; fiyatı sonradan kovalamak geri çekilme riski taşır");
+  if (!daily.resistanceBreakout)
+    riskler.push("Direnç üzerinde kalıcılık henüz doğrulanmadı");
+  if (!daily.volumeConfirmed)
+    riskler.push("Hacim günlük trend için henüz tam teyit vermiyor");
+  if (earlyMovement.piyasaHavasi === "Piyasa desteği zayıf")
+    riskler.push("Genel piyasa desteği sınırlı");
+  if (riskler.length === 0)
+    riskler.push("Teknik göstergeler geleceği garanti etmez; yeni kapanış izlenmeli");
+
+  const sonrakiAdim = dailyConfirmed
+    ? "Bir sonraki kapanışta trendin ve hacmin korunup korunmadığını kontrol edin."
+    : daily.resistanceBreakout
+      ? "Yeni kapanışta direnç üzerindeki kalıcılığı ve hacmin devamını kontrol edin."
+      : "Kapanışta teyit sayısını, direnç seviyesini ve hacmin devamını kontrol edin.";
+
+  return {
+    durum,
+    ozet: dailyConfirmed
+      ? "Günlük şartların çoğu tamamlandı; hareketin bir kısmı gerçekleşmiş olabilir."
+      : rapidMove
+        ? "Fiyat hareketi hızlandı; günlük trend henüz tam doğrulanmış değil."
+        : "Bazı olumlu işaretler oluşuyor; gün sonu kapanışı sonucu değiştirebilir.",
+    neden: nedenler.slice(0, 3).join(" · "),
+    risk: riskler.slice(0, 2).join(" · "),
+    sonrakiAdim,
+  };
+};
+
 const confirmCandidate = async (
   candidate: TreydSinyali,
   context: EarlyMovementContext,
@@ -552,6 +662,15 @@ const confirmCandidate = async (
       context,
       lastCompletedIdx,
     );
+    const opening = analyzeOpeningBehavior(chart.opens, chart.closes, 50);
+    const kararDestegi = buildDecisionSupport(
+      candidate,
+      daily,
+      context,
+      earlyMovement,
+      opening,
+      teyitSayisi,
+    );
     return {
       ...candidate,
       radarDurumu,
@@ -575,6 +694,7 @@ const confirmCandidate = async (
       toplamTeyit: TOTAL_CONFIRMATIONS,
       teyitler,
       ...earlyMovement,
+      kararDestegi,
     };
   } catch {
     return {

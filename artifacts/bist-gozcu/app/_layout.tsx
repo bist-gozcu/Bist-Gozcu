@@ -21,6 +21,7 @@ import { PortfolioProvider } from "@/contexts/PortfolioContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { WatchlistProvider } from "@/contexts/WatchlistContext";
 import { AlertProvider } from "@/contexts/AlertContext";
+import { DemoProvider } from "@/contexts/DemoContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -37,6 +38,7 @@ function RootLayoutNav() {
           presentation: "card",
         }}
       />
+      <Stack.Screen name="demo" options={{ headerShown: false }} />
     </Stack>
   );
 }
@@ -76,8 +78,10 @@ export default function RootLayout() {
                   <StockProvider>
                     <PortfolioProvider>
                       <AlertProvider>
-                        <RootLayoutNav />
-                        <DisclaimerModal />
+                        <DemoProvider>
+                          <RootLayoutNav />
+                          <DisclaimerModal />
+                        </DemoProvider>
                       </AlertProvider>
                     </PortfolioProvider>
                   </StockProvider>
