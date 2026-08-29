@@ -75,28 +75,44 @@ function OpenPosition({
         <Text style={[styles.pnl, { color: pnlColor }]}>{percent(pnlPct)}</Text>
       </View>
       <View style={styles.grid}>
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>
-          Sanal giriş
-        </Text>
-        <Text style={[styles.value, { color: colors.foreground }]}>
-          {money(position.entryPrice)}
-        </Text>
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>
-          Son fiyat
-        </Text>
-        <Text style={[styles.value, { color: colors.foreground }]}>
-          {money(marketPrice)}
-        </Text>
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>
-          Adet / tutar
-        </Text>
-        <Text style={[styles.value, { color: colors.foreground }]}>
-          {position.quantity} · {money(marketValue)}
-        </Text>
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>
-          Sanal K/Z
-        </Text>
-        <Text style={[styles.value, { color: pnlColor }]}>{money(pnl)}</Text>
+        <View style={styles.detailRow}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Sanal giriş
+          </Text>
+          <Text style={[styles.value, { color: colors.foreground }]}>
+            {money(position.entryPrice)}
+          </Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Son fiyat
+          </Text>
+          <Text style={[styles.value, { color: colors.foreground }]}>
+            {money(marketPrice)}
+          </Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Lot / adet
+          </Text>
+          <Text style={[styles.value, { color: colors.foreground }]}>
+            {position.quantity.toLocaleString("tr-TR")} lot
+          </Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Güncel tutar
+          </Text>
+          <Text style={[styles.value, { color: colors.foreground }]}>
+            {money(marketValue)}
+          </Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Sanal K/Z
+          </Text>
+          <Text style={[styles.value, { color: pnlColor }]}>{money(pnl)}</Text>
+        </View>
       </View>
       <Text style={[styles.subtle, { color: colors.mutedForeground }]}>
         Giriş: {dateLabel(position.entryAt)}
@@ -446,10 +462,17 @@ const styles = StyleSheet.create({
   },
   symbol: { fontSize: 20, fontFamily: "Inter_700Bold" },
   pnl: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  grid: { marginTop: 12, gap: 6 },
+  grid: { marginTop: 12, gap: 7 },
+  detailRow: {
+    minHeight: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   value: {
-    position: "absolute",
-    right: 0,
+    flexShrink: 1,
+    textAlign: "right",
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
