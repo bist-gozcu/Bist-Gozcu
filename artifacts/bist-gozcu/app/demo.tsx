@@ -77,7 +77,7 @@ function OpenPosition({
       <View style={styles.grid}>
         <View style={styles.detailRow}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Sanal giriş
+            Giriş fiyatı (₺)
           </Text>
           <Text style={[styles.value, { color: colors.foreground }]}>
             {money(position.entryPrice)}
@@ -85,7 +85,7 @@ function OpenPosition({
         </View>
         <View style={styles.detailRow}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Son fiyat
+            Güncel fiyat (₺)
           </Text>
           <Text style={[styles.value, { color: colors.foreground }]}>
             {money(marketPrice)}
@@ -93,7 +93,7 @@ function OpenPosition({
         </View>
         <View style={styles.detailRow}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Lot / adet
+            Lot adedi
           </Text>
           <Text style={[styles.value, { color: colors.foreground }]}>
             {position.quantity.toLocaleString("tr-TR")} lot
@@ -101,7 +101,7 @@ function OpenPosition({
         </View>
         <View style={styles.detailRow}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Güncel tutar
+            Pozisyon değeri (₺)
           </Text>
           <Text style={[styles.value, { color: colors.foreground }]}>
             {money(marketValue)}
@@ -109,7 +109,7 @@ function OpenPosition({
         </View>
         <View style={styles.detailRow}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Sanal K/Z
+            Kâr / zarar (₺)
           </Text>
           <Text style={[styles.value, { color: pnlColor }]}>{money(pnl)}</Text>
         </View>

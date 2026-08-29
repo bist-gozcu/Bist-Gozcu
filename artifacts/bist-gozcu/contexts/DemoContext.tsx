@@ -22,6 +22,18 @@ export type DemoSignalInput = {
   dailyTrend: "up" | "sideways" | "down";
 };
 
+export type DemoMorningCandidate = {
+  id: string;
+  symbol: string;
+  signalType: DemoSignalType;
+  signalScore: number;
+  confirmations: number;
+  closePrice: number;
+  closeAt: number;
+  status: "bekliyor" | "işleme alındı" | "elenmiş";
+  reason: string;
+};
+
 export type DemoPosition = {
   id: string;
   symbol: string;
@@ -41,11 +53,23 @@ export type DemoPosition = {
   exitReason?: string;
 };
 
+export type DemoSignalSnapshot = {
+  id: string;
+  symbol: string;
+  signalType: DemoSignalType;
+  signalScore: number;
+  confirmations: number;
+  signalPrice: number;
+  signalAt: number;
+};
+
 type DemoAccount = {
   initialBalance: number;
   cash: number;
   positions: DemoPosition[];
   closedTrades: DemoPosition[];
+  signalSnapshots: DemoSignalSnapshot[];
+  morningCandidates: DemoMorningCandidate[];
   processedSignalKeys: string[];
 };
 
@@ -56,9 +80,11 @@ interface DemoContextType {
   syncSignals: (
     signals: DemoSignalInput[],
     prices: Record<string, number>,
+    marketOpen?: boolean,
   ) => void;
   closePosition: (id: string, marketPrice: number, reason: string) => void;
   resetAccount: () => void;
+  prepareMorningCandidates: (signals: DemoSignalInput[]) => void;
 }
 
 const INITIAL_BALANCE = 100_000;
@@ -72,6 +98,8 @@ const createInitialAccount = (): DemoAccount => ({
   cash: INITIAL_BALANCE,
   positions: [],
   closedTrades: [],
+  signalSnapshots: [],
+  morningCandidates: [],
   processedSignalKeys: [],
 });
 
@@ -116,6 +144,32 @@ const closeInAccount = (
     cash: account.cash + grossValue - exitFee,
     positions: account.positions.filter((item) => item.id !== position.id),
     closedTrades: [closed, ...account.closedTrades].slice(0, 200),
+  };
+};
+
+const recordSignalSnapshots = (
+  account: DemoAccount,
+  signals: DemoSignalInput[],
+  now: number,
+): DemoAccount => {
+  const existingIds = new Set(account.signalSnapshots.map((item) => item.id));
+  const newSnapshots = signals
+    .filter((signal) => Number.isFinite(signal.price) && signal.price > 0)
+    .map((signal) => ({
+      id: `${signal.symbol}-${getDayKey(now)}-${signal.signalType}`,
+      symbol: signal.symbol,
+      signalType: signal.signalType,
+      signalScore: signal.score,
+      confirmations: signal.confirmations,
+      signalPrice: signal.price,
+      signalAt: now,
+    }))
+    .filter((snapshot) => !existingIds.has(snapshot.id));
+
+  if (newSnapshots.length === 0) return account;
+  return {
+    ...account,
+    signalSnapshots: [...account.signalSnapshots, ...newSnapshots].slice(-1000),
   };
 };
 
@@ -204,13 +258,48 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     [account, updateAccount],
   );
 
+  const prepareMorningCandidates = useCallback(
+    (signals: DemoSignalInput[]) => {
+      const now = Date.now();
+      const candidates = signals
+        .filter(
+          (signal) =>
+            Number.isFinite(signal.price) &&
+            signal.price > 0 &&
+            signal.dailyTrend !== "down" &&
+            (signal.signalType === "gunluk_teyitli" || signal.score >= 50),
+        )
+        .slice(0, 12)
+        .map((signal) => ({
+          id: `${signal.symbol}-${getDayKey(now)}-${signal.signalType}`,
+          symbol: signal.symbol,
+          signalType: signal.signalType,
+          signalScore: signal.score,
+          confirmations: signal.confirmations,
+          closePrice: signal.price,
+          closeAt: now,
+          status: "bekliyor" as const,
+          reason:
+            signal.signalType === "gunluk_teyitli"
+              ? `${signal.confirmations}/6 teyit ve kapanışta aşağı yön yok`
+              : `Erken hareket skoru ${signal.score.toFixed(0)} ve yön aşağı değil`,
+        }));
+      updateAccount({ ...account, morningCandidates: candidates });
+    },
+    [account, updateAccount],
+  );
+
   const syncSignals = useCallback(
-    (signals: DemoSignalInput[], prices: Record<string, number>) => {
+    (
+      signals: DemoSignalInput[],
+      prices: Record<string, number>,
+      marketOpen = true,
+    ) => {
       const currentBySymbol = new Map(
         signals.map((signal) => [signal.symbol, signal]),
       );
-      let next = account;
       const now = Date.now();
+      let next = recordSignalSnapshots(account, signals, now);
       for (const position of account.positions) {
         const signal = currentBySymbol.get(position.symbol);
         const price = prices[position.symbol];
@@ -234,8 +323,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           );
         }
       }
-      for (const signal of signals) {
-        next = applyBuy(next, signal, now);
+      if (marketOpen) {
+        for (const signal of signals) {
+          next = applyBuy(next, signal, now);
+        }
       }
       if (next !== account) updateAccount(next);
     },
@@ -264,6 +355,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       loading,
       executeSignals,
       syncSignals,
+      prepareMorningCandidates,
       closePosition,
       resetAccount,
     }),
@@ -272,6 +364,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       loading,
       executeSignals,
       syncSignals,
+      prepareMorningCandidates,
       closePosition,
       resetAccount,
     ],
@@ -285,6 +378,7 @@ const DemoContext = createContext<DemoContextType>({
   loading: false,
   executeSignals: () => {},
   syncSignals: () => {},
+  prepareMorningCandidates: () => {},
   closePosition: () => {},
   resetAccount: () => {},
 });
