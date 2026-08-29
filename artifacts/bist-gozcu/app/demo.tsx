@@ -64,9 +64,14 @@ function OpenPosition({
     >
       <View style={styles.tradeHeader}>
         <View>
-          <Text style={[styles.symbol, { color: colors.foreground }]}>
-            {position.symbol}
-          </Text>
+          <View style={styles.symbolLine}>
+            <Text style={[styles.symbol, { color: colors.foreground }]}>
+              {position.symbol}
+            </Text>
+            <Text style={[styles.marketPrice, { color: colors.foreground }]}>
+              Son: {money(marketPrice)}
+            </Text>
+          </View>
           <Text style={[styles.subtle, { color: colors.mutedForeground }]}>
             {signalLabel[position.signalType]} · {position.confirmations}/6
             teyit
@@ -81,14 +86,6 @@ function OpenPosition({
           </Text>
           <Text style={[styles.value, { color: colors.foreground }]}>
             {money(position.entryPrice)}
-          </Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            Güncel fiyat (₺)
-          </Text>
-          <Text style={[styles.value, { color: colors.foreground }]}>
-            {money(marketPrice)}
           </Text>
         </View>
         <View style={styles.detailRow}>
@@ -647,7 +644,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
   },
+  symbolLine: { flexDirection: "row", alignItems: "baseline", gap: 8 },
   symbol: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  marketPrice: { fontSize: 13, fontFamily: "Inter_700Bold" },
   pnl: { fontSize: 18, fontFamily: "Inter_700Bold" },
   grid: { marginTop: 12, gap: 7 },
   detailRow: {
