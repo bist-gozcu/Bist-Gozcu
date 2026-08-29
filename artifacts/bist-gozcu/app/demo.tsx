@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -172,6 +172,18 @@ export default function DemoScreen() {
   const router = useRouter();
   const { account, loading, closePosition, resetAccount } = useDemo();
   const { quotes } = useStocks();
+  const [reportPeriod, setReportPeriod] = useState<
+    "gunluk" | "haftalik" | "aylik"
+  >("gunluk");
+  const periodDays =
+    reportPeriod === "gunluk" ? 1 : reportPeriod === "haftalik" ? 7 : 30;
+  const periodStart = Date.now() - periodDays * 24 * 60 * 60 * 1000;
+  const todaySnapshots = account.signalSnapshots.filter(
+    (snapshot) => snapshot.signalAt >= periodStart,
+  );
+  const reportClosedTrades = account.closedTrades.filter(
+    (trade) => (trade.exitAt ?? 0) >= periodStart,
+  );
 
   const values = useMemo(() => {
     const openValue = account.positions.reduce(
@@ -274,6 +286,163 @@ export default function DemoScreen() {
           Gerçek emir gönderilmez. Sonuçlar yalnızca sinyal kalitesini test
           eder.
         </Text>
+      </View>
+
+      {account.morningCandidates.length > 0 ? (
+        <View
+          style={[
+            styles.reportCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.reportTitle, { color: colors.foreground }]}>
+            Sabah açılış adayları
+          </Text>
+          <Text style={[styles.subtle, { color: colors.mutedForeground }]}>
+            Akşam kapanışında şartları sağlayan hisseler
+          </Text>
+          {account.morningCandidates.map((candidate) => (
+            <View
+              key={candidate.id}
+              style={[styles.reportRow, { borderBottomColor: colors.border }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[styles.closedSymbol, { color: colors.foreground }]}
+                >
+                  {candidate.symbol}
+                </Text>
+                <Text
+                  style={[styles.subtle, { color: colors.mutedForeground }]}
+                >
+                  {candidate.reason}
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={[styles.value, { color: colors.foreground }]}>
+                  {money(candidate.closePrice)}
+                </Text>
+                <Text
+                  style={[styles.subtle, { color: colors.mutedForeground }]}
+                >
+                  Bekliyor
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View
+        style={[
+          styles.reportCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        <Text style={[styles.reportTitle, { color: colors.foreground }]}>
+          Hareket ve işlem raporu
+        </Text>
+        <View style={styles.periodTabs}>
+          {(["gunluk", "haftalik", "aylik"] as const).map((period) => (
+            <Pressable
+              key={period}
+              onPress={() => setReportPeriod(period)}
+              style={[
+                styles.periodTab,
+                {
+                  backgroundColor:
+                    reportPeriod === period ? colors.primary : colors.secondary,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color:
+                    reportPeriod === period
+                      ? colors.background
+                      : colors.foreground,
+                  fontSize: 11,
+                  fontFamily: "Inter_700Bold",
+                }}
+              >
+                {period === "gunluk"
+                  ? "Günlük"
+                  : period === "haftalik"
+                    ? "Haftalık"
+                    : "Aylık"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={[styles.subtle, { color: colors.mutedForeground }]}>
+          {todaySnapshots.length} sinyal · {reportClosedTrades.length} kapanan
+          işlem
+        </Text>
+        {todaySnapshots.length === 0 ? (
+          <Text style={[styles.empty, { color: colors.mutedForeground }]}>
+            Bugün kaydedilmiş sinyal yok.
+          </Text>
+        ) : (
+          todaySnapshots
+            .slice()
+            .reverse()
+            .map((snapshot) => {
+              const current = quotes[snapshot.symbol]?.regularMarketPrice;
+              const move =
+                current && snapshot.signalPrice > 0
+                  ? ((current - snapshot.signalPrice) / snapshot.signalPrice) *
+                    100
+                  : null;
+              return (
+                <View
+                  key={snapshot.id}
+                  style={[
+                    styles.reportRow,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.closedSymbol,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {snapshot.symbol}
+                    </Text>
+                    <Text
+                      style={[styles.subtle, { color: colors.mutedForeground }]}
+                    >
+                      {signalLabel[snapshot.signalType]} ·{" "}
+                      {dateLabel(snapshot.signalAt)}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={[styles.value, { color: colors.foreground }]}>
+                      {money(snapshot.signalPrice)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.subtle,
+                        {
+                          color:
+                            move === null
+                              ? colors.mutedForeground
+                              : move >= 0
+                                ? colors.up
+                                : colors.down,
+                        },
+                      ]}
+                    >
+                      {move === null
+                        ? "Hareket bekleniyor"
+                        : `Şimdi ${percent(move)}`}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })
+        )}
       </View>
 
       <View
@@ -423,6 +592,24 @@ const styles = StyleSheet.create({
   backText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   warning: { margin: 16, borderWidth: 1, borderRadius: 10, padding: 12 },
   warningText: { fontSize: 12, lineHeight: 17, fontFamily: "Inter_500Medium" },
+  reportCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+  },
+  reportTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  periodTabs: { flexDirection: "row", gap: 6, marginTop: 10, marginBottom: 6 },
+  periodTab: { borderRadius: 7, paddingHorizontal: 10, paddingVertical: 7 },
+  reportRow: {
+    minHeight: 58,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+  },
   summary: {
     marginHorizontal: 16,
     borderRadius: 16,

@@ -26,7 +26,7 @@ export default function TreydScreen() {
   const router = useRouter();
   const { data, isLoading, isFetching, error, manuelYenile } =
     useMarketData("bist100");
-  const { syncSignals } = useDemo();
+  const { syncSignals, prepareMorningCandidates } = useDemo();
   const [results, setResults] = useState<TreydSinyali[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -79,6 +79,28 @@ export default function TreydScreen() {
       const confirmedResults = await getTop6TreydWithConfirmation(data);
       setResults(confirmedResults);
       setHasScanned(true);
+      if (!marketOpen) {
+        prepareMorningCandidates(
+          confirmedResults
+            .filter(
+              (item) =>
+                item.radarDurumu === "gunluk_teyitli" ||
+                (item.radarDurumu === "erken_hareket" &&
+                  item.erkenHareketSkoru >= 50),
+            )
+            .map((item) => ({
+              symbol: item.sembol,
+              price: item.fiyat,
+              signalType:
+                item.radarDurumu === "gunluk_teyitli"
+                  ? ("gunluk_teyitli" as const)
+                  : ("erken_hareket" as const),
+              score: item.erkenHareketSkoru,
+              confirmations: item.teyitSayisi,
+              dailyTrend: item.gunlukTrend,
+            })),
+        );
+      }
       void fireRadarNotifications(
         confirmedResults.map((item) => ({
           symbol: item.sembol,
@@ -150,8 +172,16 @@ export default function TreydScreen() {
     const prices = Object.fromEntries(
       (data ?? []).map((item) => [item.sembol, item.fiyat]),
     );
-    syncSignals(demoSignals, prices);
-  }, [data, demoSignalSignature, hasScanned, isScanning, results, syncSignals]);
+    syncSignals(demoSignals, prices, marketOpen);
+  }, [
+    data,
+    demoSignalSignature,
+    hasScanned,
+    isScanning,
+    marketOpen,
+    results,
+    syncSignals,
+  ]);
 
   const sessionLabel = useMemo(
     () =>
