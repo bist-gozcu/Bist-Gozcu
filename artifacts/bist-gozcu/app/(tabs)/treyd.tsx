@@ -115,7 +115,7 @@ export default function TreydScreen() {
     } finally {
       setIsScanning(false);
     }
-  }, [data, isScanning, isRefreshing]);
+  }, [data, isScanning, isRefreshing, marketOpen, prepareMorningCandidates]);
 
   const refreshAndScan = useCallback(async () => {
     if (isRefreshing || isScanning) return;
@@ -131,6 +131,17 @@ export default function TreydScreen() {
   useEffect(() => {
     if (data && !hasScanned && !isScanning && !isRefreshing) void scan();
   }, [data, hasScanned, isScanning, isRefreshing, scan]);
+
+  useEffect(() => {
+    if (!marketOpen) return;
+    const timer = setInterval(
+      () => {
+        void refreshAndScan();
+      },
+      5 * 60 * 1000,
+    );
+    return () => clearInterval(timer);
+  }, [marketOpen, refreshAndScan]);
 
   const demoSignalSignature = useMemo(
     () =>
