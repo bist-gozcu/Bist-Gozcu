@@ -44,6 +44,10 @@ export default function TreydScreen() {
     () => results.filter((item) => item.radarDurumu === "erken_hareket"),
     [results],
   );
+  const cekirgeResults = useMemo(
+    () => results.filter((item) => item.cekirgeUygun),
+    [results],
+  );
   const sections = useMemo(() => {
     const nextSections: Array<{
       key: string;
@@ -68,8 +72,14 @@ export default function TreydScreen() {
         title: "Gün İçi İzleme",
         data: intradayResults,
       });
+    if (cekirgeResults.length > 0)
+      nextSections.push({
+        key: "cekirge",
+        title: "Çekirge Radarı",
+        data: cekirgeResults,
+      });
     return nextSections;
-  }, [dailyResults, earlyMovementResults, intradayResults]);
+  }, [dailyResults, earlyMovementResults, intradayResults, cekirgeResults]);
 
   const scan = useCallback(async () => {
     if (!data || isScanning || isRefreshing) return;
@@ -86,13 +96,15 @@ export default function TreydScreen() {
               (item) =>
                 item.radarDurumu === "gunluk_teyitli" ||
                 (item.radarDurumu === "erken_hareket" &&
-                  item.erkenHareketSkoru >= 50),
+                  item.erkenHareketSkoru >= 50) ||
+                item.cekirgeUygun,
             )
             .map((item) => ({
               symbol: item.sembol,
               price: item.fiyat,
-              signalType:
-                item.radarDurumu === "gunluk_teyitli"
+              signalType: item.cekirgeUygun
+                ? ("cekirge_adayi" as const)
+                : item.radarDurumu === "gunluk_teyitli"
                   ? ("gunluk_teyitli" as const)
                   : ("erken_hareket" as const),
               score: item.erkenHareketSkoru,
@@ -292,8 +304,9 @@ export default function TreydScreen() {
         <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>
           Günlük Kapanış Teyitli bölümü tamamlanmış günlük mumlara dayanır.
           Erken Hareket Radarı, ani ivmeyi daha erken gösterir ancak teyitli
-          trend değildir. Gün İçi İzleme adayları kapanışta bozulabilir; eski
-          veya belirsiz veriyle yeni bildirim üretilmez.
+          trend değildir. Gün İçi İzleme adayları kapanışta bozulabilir. Çekirge
+          Radarı yatay birikim ve olası hazırlık gösterir; kırılım teyidi
+          gerekir. Eski veya belirsiz veriyle yeni bildirim üretilmez.
         </Text>
         <Pressable
           onPress={() => router.push("/demo" as never)}
@@ -347,6 +360,26 @@ export default function TreydScreen() {
               </Text>
             </View>
             <View style={styles.resultCard}>
+              {section.key === "cekirge" ? (
+                <View
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingTop: 10,
+                    paddingBottom: 4,
+                    gap: 3,
+                  }}
+                >
+                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
+                    Çekirge Adayı · {item.cekirgeSkoru}/100
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    {item.cekirgeNedenleri.slice(0, 2).join(" · ")}
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    Risk: {item.cekirgeRiski}
+                  </Text>
+                </View>
+              ) : null}
               <DecisionCard
                 sembol={item.sembol}
                 skor={item.skor}

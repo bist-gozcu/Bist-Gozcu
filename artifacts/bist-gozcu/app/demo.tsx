@@ -23,6 +23,7 @@ const signalLabel: Record<DemoPosition["signalType"], string> = {
   erken_hareket: "Erken Hareket",
   gun_ici_izleme: "Gün İçi İzleme",
   gunluk_teyitli: "Günlük Teyitli",
+  cekirge_adayi: "Çekirge Adayı",
 };
 
 const dateLabel = (timestamp?: number) =>

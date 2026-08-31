@@ -42,6 +42,7 @@ const INTRADAY_MIN_CONFIRMATIONS = 3;
 const EARLY_RADAR_MIN_SCORE = 30;
 const CANDIDATE_POOL_SIZE = 12;
 const MIN_AVERAGE_TURNOVER_TL = 5_000_000;
+const CEKIRGE_MIN_SCORE = 35;
 
 export type TreydSinyali = {
   sembol: string;
@@ -84,6 +85,14 @@ export type TreydSinyali = {
   piyasaZamani: number | null;
   /** Teknik sonucu kullanıcı diline çeviren sade karar desteği. */
   kararDestegi: KararDestegi;
+  /** Yatay birikim ve olası yukarı hazırlık puanı. */
+  cekirgeSkoru: number;
+  /** Çekirge adayının ölçülebilir nedenleri. */
+  cekirgeNedenleri: string[];
+  /** Adayın temel riski. */
+  cekirgeRiski: string;
+  /** Ekranda Çekirge Adayı olarak gösterilip gösterilmeyeceği. */
+  cekirgeUygun: boolean;
 };
 
 type SectorSnapshot = {
@@ -210,6 +219,10 @@ const getQuoteCandidate = (
       risk: "Eksik veri yanlış yönlendirebilir.",
       sonrakiAdim: "Yeni günlük veri geldikten sonra tekrar kontrol edin.",
     },
+    cekirgeSkoru: 0,
+    cekirgeNedenleri: ["Yatay yapı için yeterli veri yok"],
+    cekirgeRiski: "Veri yetersiz; aday olarak değerlendirilmemeli.",
+    cekirgeUygun: false,
   };
 };
 
@@ -237,6 +250,119 @@ export const getTop6Treyd = (hisseler: Hisse[]): TreydSinyali[] => {
       return indexPriority || b.skor - a.skor;
     })
     .slice(0, CANDIDATE_POOL_SIZE);
+};
+
+type CekirgeAnalysis = Pick<
+  TreydSinyali,
+  "cekirgeSkoru" | "cekirgeNedenleri" | "cekirgeRiski" | "cekirgeUygun"
+>;
+
+const calculateCekirge = (
+  chart: Awaited<ReturnType<typeof fetchChartData>>,
+  daily: ReturnType<typeof analyzeDailySetup>,
+  lastCompletedIdx: number,
+): CekirgeAnalysis => {
+  const empty: CekirgeAnalysis = {
+    cekirgeSkoru: 0,
+    cekirgeNedenleri: ["Yatay yapı için yeterli tarihsel veri yok"],
+    cekirgeRiski: "Veri yetersiz; aday olarak değerlendirilmemeli.",
+    cekirgeUygun: false,
+  };
+  if (!chart || lastCompletedIdx < 30) return empty;
+  const start = lastCompletedIdx - 19;
+  const closes = chart.closes.slice(start, lastCompletedIdx + 1);
+  const volumes = chart.volumes.slice(start, lastCompletedIdx + 1);
+  const validCloses = closes.filter(
+    (value) => Number.isFinite(value) && value > 0,
+  );
+  if (validCloses.length < 15) return empty;
+  const low = Math.min(...validCloses);
+  const high = Math.max(...validCloses);
+  const lastClose = validCloses[validCloses.length - 1];
+  const rangePercent = ((high - low) / low) * 100;
+  const nearSupportCount = validCloses.filter(
+    (value) => value <= low * 1.03,
+  ).length;
+  const nearResistance = ((high - lastClose) / lastClose) * 100;
+  const recentVolumes = volumes
+    .slice(-5)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const baseVolumes = volumes.filter(
+    (value) => Number.isFinite(value) && value > 0,
+  );
+  const recentAverageVolume = recentVolumes.length
+    ? recentVolumes.reduce((sum, value) => sum + value, 0) /
+      recentVolumes.length
+    : 0;
+  const baseAverageVolume = baseVolumes.length
+    ? baseVolumes.reduce((sum, value) => sum + value, 0) / baseVolumes.length
+    : 0;
+  const volumeRatio =
+    baseAverageVolume > 0 ? recentAverageVolume / baseAverageVolume : 0;
+  const lastChange =
+    validCloses.length >= 2
+      ? ((lastClose - validCloses[validCloses.length - 2]) /
+          validCloses[validCloses.length - 2]) *
+        100
+      : 0;
+  const rangeScore =
+    rangePercent <= 12
+      ? 20
+      : rangePercent <= 20
+        ? 15
+        : rangePercent <= 30
+          ? 8
+          : 0;
+  const supportScore =
+    nearSupportCount >= 3
+      ? 15
+      : nearSupportCount >= 2
+        ? 10
+        : nearSupportCount >= 1
+          ? 4
+          : 0;
+  const volumeScore =
+    volumeRatio > 0 && volumeRatio <= 0.85 ? 10 : volumeRatio <= 1.1 ? 6 : 0;
+  const resistanceScore =
+    nearResistance <= 3
+      ? 15
+      : nearResistance <= 6
+        ? 10
+        : nearResistance <= 10
+          ? 5
+          : 0;
+  const directionScore =
+    daily.dailyTrend === "down" ? 0 : lastChange >= 0 ? 10 : 4;
+  const score = clamp(
+    rangeScore + supportScore + volumeScore + resistanceScore + directionScore,
+    0,
+    100,
+  );
+  const reasons = [
+    `20 günlük bant genişliği %${rangePercent.toFixed(1)}`,
+    `${nearSupportCount} kez alt banda yakın kapanış`,
+    `Son 5 gün hacmi ortalamanın ${volumeRatio > 0 ? `${volumeRatio.toFixed(2)} katı` : "hesaplanamadı"}`,
+    `Üst banda/dirence mesafe %${nearResistance.toFixed(1)}`,
+    `Günlük yön: ${daily.dailyTrend === "down" ? "aşağı" : daily.dailyTrend === "up" ? "yukarı" : "yatay"}`,
+  ];
+  const risk =
+    daily.dailyTrend === "down"
+      ? "Günlük yön aşağı; yatay yapı bozulmuş olabilir."
+      : nearResistance > 6
+        ? "Direnç uzak; yataylık uzun sürebilir."
+        : volumeRatio > 1.25
+          ? "Hacim artışı henüz istikrarlı değil; kırılım teyidi beklenmeli."
+          : "Direnç kırılmadı; aday yükseliş garantisi taşımaz.";
+  return {
+    cekirgeSkoru: score,
+    cekirgeNedenleri: reasons,
+    cekirgeRiski: risk,
+    cekirgeUygun:
+      score >= CEKIRGE_MIN_SCORE &&
+      daily.dailyTrend !== "down" &&
+      rangePercent <= 30 &&
+      baseAverageVolume > 0,
+  };
 };
 
 const addSetupReason = (
@@ -460,10 +586,7 @@ const buildDecisionSupport = (
   candidate: TreydSinyali,
   daily: ReturnType<typeof analyzeDailySetup>,
   context: EarlyMovementContext,
-  earlyMovement: Pick<
-    TreydSinyali,
-    "erkenHareketSkoru" | "piyasaHavasi"
-  >,
+  earlyMovement: Pick<TreydSinyali, "erkenHareketSkoru" | "piyasaHavasi">,
   opening: ReturnType<typeof analyzeOpeningBehavior>,
   teyitSayisi: number,
 ): KararDestegi => {
@@ -493,9 +616,7 @@ const buildDecisionSupport = (
 
   const nedenler: string[] = [];
   if (earlyMovement.erkenHareketSkoru >= EARLY_RADAR_MIN_SCORE)
-    nedenler.push(
-      `Erken hareket skoru ${earlyMovement.erkenHareketSkoru}/100`,
-    );
+    nedenler.push(`Erken hareket skoru ${earlyMovement.erkenHareketSkoru}/100`);
   if (daily.volumeConfirmed || daily.relativeVolume >= 1.2)
     nedenler.push(
       `Hacim normalin ${daily.relativeVolume.toFixed(2)} katı seviyesinde`,
@@ -507,14 +628,15 @@ const buildDecisionSupport = (
   if (sectorRelative >= 1.5)
     nedenler.push("Kendi sektörüne göre daha güçlü hareket ediyor");
   if (opening && opening.recentUpDays > opening.recentDownDays)
-    nedenler.push(
-      `Son 5 açılışın ${opening.recentUpDays} tanesi yukarı yönlü`,
-    );
-  if (nedenler.length === 0) nedenler.push("Yeterli olumlu öncü işaret oluşmadı");
+    nedenler.push(`Son 5 açılışın ${opening.recentUpDays} tanesi yukarı yönlü`);
+  if (nedenler.length === 0)
+    nedenler.push("Yeterli olumlu öncü işaret oluşmadı");
 
   const riskler: string[] = [];
   if (rapidMove)
-    riskler.push("Hareket hızlı; fiyatı sonradan kovalamak geri çekilme riski taşır");
+    riskler.push(
+      "Hareket hızlı; fiyatı sonradan kovalamak geri çekilme riski taşır",
+    );
   if (!daily.resistanceBreakout)
     riskler.push("Direnç üzerinde kalıcılık henüz doğrulanmadı");
   if (!daily.volumeConfirmed)
@@ -522,7 +644,9 @@ const buildDecisionSupport = (
   if (earlyMovement.piyasaHavasi === "Piyasa desteği zayıf")
     riskler.push("Genel piyasa desteği sınırlı");
   if (riskler.length === 0)
-    riskler.push("Teknik göstergeler geleceği garanti etmez; yeni kapanış izlenmeli");
+    riskler.push(
+      "Teknik göstergeler geleceği garanti etmez; yeni kapanış izlenmeli",
+    );
 
   const sonrakiAdim = dailyConfirmed
     ? "Bir sonraki kapanışta trendin ve hacmin korunup korunmadığını kontrol edin."
@@ -662,6 +786,7 @@ const confirmCandidate = async (
       context,
       lastCompletedIdx,
     );
+    const cekirge = calculateCekirge(chart, daily, lastCompletedIdx);
     const opening = analyzeOpeningBehavior(chart.opens, chart.closes, 50);
     const kararDestegi = buildDecisionSupport(
       candidate,
@@ -694,6 +819,7 @@ const confirmCandidate = async (
       toplamTeyit: TOTAL_CONFIRMATIONS,
       teyitler,
       ...earlyMovement,
+      ...cekirge,
       kararDestegi,
     };
   } catch {
@@ -701,6 +827,10 @@ const confirmCandidate = async (
       ...candidate,
       etiket: "TAKİP LİSTESİ",
       teyitler: ["— Tarihsel veri alınamadı; güvenli modda gösteriliyor"],
+      cekirgeSkoru: 0,
+      cekirgeNedenleri: ["Yatay yapı verisi alınamadı"],
+      cekirgeRiski: "Tarihsel veri alınamadı; aday olarak değerlendirilmemeli.",
+      cekirgeUygun: false,
     };
   }
 };
@@ -751,5 +881,14 @@ export const getTop6TreydWithConfirmation = async (
     .slice(0, 6)
     .map((signal) => ({ ...signal, radarDurumu: "erken_hareket" as const }));
 
-  return [...dailyConfirmed, ...earlyMovement, ...intradayWatch];
+  const selectedBase = [...dailyConfirmed, ...earlyMovement, ...intradayWatch];
+  const selectedSymbols = new Set(selectedBase.map((signal) => signal.sembol));
+  const cekirgeCandidates = confirmed
+    .filter(
+      (signal) => signal.cekirgeUygun && !selectedSymbols.has(signal.sembol),
+    )
+    .sort((a, b) => b.cekirgeSkoru - a.cekirgeSkoru || sortSignals(a, b))
+    .slice(0, 6);
+
+  return [...selectedBase, ...cekirgeCandidates];
 };

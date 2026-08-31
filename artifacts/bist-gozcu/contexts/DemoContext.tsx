@@ -11,7 +11,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export type DemoSignalType =
   | "erken_hareket"
   | "gun_ici_izleme"
-  | "gunluk_teyitli";
+  | "gunluk_teyitli"
+  | "cekirge_adayi";
 
 export type DemoSignalInput = {
   symbol: string;
@@ -113,7 +114,8 @@ const saveAccount = (account: DemoAccount): void => {
 const usableSignal = (signal: DemoSignalInput): boolean =>
   Number.isFinite(signal.price) &&
   signal.price > 0 &&
-  (signal.signalType === "gunluk_teyitli" || signal.score >= 50);
+  (signal.signalType === "gunluk_teyitli" ||
+    (signal.signalType === "erken_hareket" && signal.score >= 50));
 
 const closeInAccount = (
   account: DemoAccount,
@@ -267,9 +269,11 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             Number.isFinite(signal.price) &&
             signal.price > 0 &&
             signal.dailyTrend !== "down" &&
-            (signal.signalType === "gunluk_teyitli" || signal.score >= 50),
+            (signal.signalType === "gunluk_teyitli" ||
+              signal.signalType === "cekirge_adayi" ||
+              signal.score >= 50),
         )
-        .slice(0, 12)
+        .slice(0, 6)
         .map((signal) => ({
           id: `${signal.symbol}-${getDayKey(now)}-${signal.signalType}`,
           symbol: signal.symbol,
