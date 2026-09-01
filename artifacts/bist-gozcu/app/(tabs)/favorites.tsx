@@ -126,7 +126,6 @@ export default function FavoritesScreen() {
         ) : (
           <DraggableFlatList
             data={favorites}
-            style={styles.favoritesViewport}
             keyExtractor={(item) => item}
             activationDistance={editMode ? 0 : 12}
             onDragEnd={({ from, to }) => {
@@ -219,7 +218,6 @@ const styles = StyleSheet.create({
   countText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   editBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   editBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  favoritesViewport: { maxHeight: 8 * 58 },
   rowWrap: { flexDirection: "row", alignItems: "center" },
   rowFlex: { flex: 1 },
   dragArea: { flex: 1 },
