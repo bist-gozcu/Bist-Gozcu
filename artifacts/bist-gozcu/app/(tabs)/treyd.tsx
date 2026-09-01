@@ -84,30 +84,17 @@ export default function TreydScreen() {
   }, [dailyResults, earlyMovementResults, intradayResults, cekirgeResults]);
 
   const scan = useCallback(async () => {
-    if (
-      !data ||
-      !favoritesReady ||
-      favorites.length === 0 ||
-      isScanning ||
-      isRefreshing
-    )
-      return;
+    if (!data || isScanning || isRefreshing) return;
 
     setIsScanning(true);
     try {
-      const favoriteSet = new Set(favorites);
-      const favoriteData = data.filter((item) => favoriteSet.has(item.sembol));
-      if (favoriteData.length === 0) {
-        setResults([]);
-        setHasScanned(true);
-        return;
-      }
-      const confirmedResults = await getTop6TreydWithConfirmation(favoriteData);
+      const confirmedResults = await getTop6TreydWithConfirmation(data);
       setResults(confirmedResults);
       setHasScanned(true);
       if (!marketOpen) {
         prepareMorningCandidates(
           confirmedResults
+            .filter((item) => favorites.includes(item.sembol))
             .filter(
               (item) =>
                 item.radarDurumu === "gunluk_teyitli" ||
@@ -166,15 +153,7 @@ export default function TreydScreen() {
   }, [isRefreshing, isScanning, manuelYenile]);
 
   useEffect(() => {
-    if (
-      data &&
-      favoritesReady &&
-      favorites.length > 0 &&
-      !hasScanned &&
-      !isScanning &&
-      !isRefreshing
-    )
-      void scan();
+    if (data && !hasScanned && !isScanning && !isRefreshing) void scan();
   }, [
     data,
     favorites,
@@ -187,9 +166,6 @@ export default function TreydScreen() {
 
   useEffect(() => {
     if (!favoritesReady) return;
-    setResults((current) =>
-      current.filter((item) => favorites.includes(item.sembol)),
-    );
     setHasScanned(false);
   }, [favorites, favoritesReady]);
 
