@@ -19,6 +19,7 @@ import {
 import { isPiyasaAcik } from "@/utils/seansKontrol";
 import { fireRadarNotifications } from "@/contexts/AlertContext";
 import { useDemo } from "@/contexts/DemoContext";
+import { useFavorites } from "@/contexts/FavoritesContext";
 
 export default function TreydScreen() {
   const colors = useColors();
@@ -27,6 +28,7 @@ export default function TreydScreen() {
   const { data, isLoading, isFetching, error, manuelYenile } =
     useMarketData("bist100");
   const { syncSignals, prepareMorningCandidates } = useDemo();
+  const { favorites, ready: favoritesReady } = useFavorites();
   const [results, setResults] = useState<TreydSinyali[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -82,11 +84,25 @@ export default function TreydScreen() {
   }, [dailyResults, earlyMovementResults, intradayResults, cekirgeResults]);
 
   const scan = useCallback(async () => {
-    if (!data || isScanning || isRefreshing) return;
+    if (
+      !data ||
+      !favoritesReady ||
+      favorites.length === 0 ||
+      isScanning ||
+      isRefreshing
+    )
+      return;
 
     setIsScanning(true);
     try {
-      const confirmedResults = await getTop6TreydWithConfirmation(data);
+      const favoriteSet = new Set(favorites);
+      const favoriteData = data.filter((item) => favoriteSet.has(item.sembol));
+      if (favoriteData.length === 0) {
+        setResults([]);
+        setHasScanned(true);
+        return;
+      }
+      const confirmedResults = await getTop6TreydWithConfirmation(favoriteData);
       setResults(confirmedResults);
       setHasScanned(true);
       if (!marketOpen) {
@@ -128,7 +144,15 @@ export default function TreydScreen() {
     } finally {
       setIsScanning(false);
     }
-  }, [data, isScanning, isRefreshing, marketOpen, prepareMorningCandidates]);
+  }, [
+    data,
+    favorites,
+    favoritesReady,
+    isScanning,
+    isRefreshing,
+    marketOpen,
+    prepareMorningCandidates,
+  ]);
 
   const refreshAndScan = useCallback(async () => {
     if (isRefreshing || isScanning) return;
@@ -142,8 +166,32 @@ export default function TreydScreen() {
   }, [isRefreshing, isScanning, manuelYenile]);
 
   useEffect(() => {
-    if (data && !hasScanned && !isScanning && !isRefreshing) void scan();
-  }, [data, hasScanned, isScanning, isRefreshing, scan]);
+    if (
+      data &&
+      favoritesReady &&
+      favorites.length > 0 &&
+      !hasScanned &&
+      !isScanning &&
+      !isRefreshing
+    )
+      void scan();
+  }, [
+    data,
+    favorites,
+    favoritesReady,
+    hasScanned,
+    isScanning,
+    isRefreshing,
+    scan,
+  ]);
+
+  useEffect(() => {
+    if (!favoritesReady) return;
+    setResults((current) =>
+      current.filter((item) => favorites.includes(item.sembol)),
+    );
+    setHasScanned(false);
+  }, [favorites, favoritesReady]);
 
   useEffect(() => {
     if (!marketOpen) return;
