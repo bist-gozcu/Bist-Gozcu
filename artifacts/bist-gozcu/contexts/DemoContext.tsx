@@ -360,8 +360,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             Number.isFinite(signal.price) &&
             signal.price > 0 &&
             signal.dailyChange !== undefined &&
-            signal.dailyChange <= 0 &&
-            signal.dailyChange >= -2,
+            signal.dailyChange <= 0.5 &&
+            signal.dailyChange >= -1.5,
         )
         .slice(0, 6)
         .map((signal) => ({

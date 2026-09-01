@@ -457,7 +457,8 @@ export default function DemoScreen() {
         </Text>
         {account.morningWaveTests.length === 0 ? (
           <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            Favoriler içinde akşam kapanışı eksiye yakın aday yok.
+            Favoriler içinde akşam kapanışı -%1,50 ile +%0,50 aralığında aday
+            yok.
           </Text>
         ) : (
           account.morningWaveTests.slice(-6).map((test) => (
