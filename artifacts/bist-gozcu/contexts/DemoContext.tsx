@@ -21,6 +21,7 @@ export type DemoSignalInput = {
   score: number;
   confirmations: number;
   dailyTrend: "up" | "sideways" | "down";
+  dailyChange?: number;
 };
 
 export type DemoMorningCandidate = {
@@ -33,6 +34,24 @@ export type DemoMorningCandidate = {
   closeAt: number;
   status: "bekliyor" | "işleme alındı" | "elenmiş";
   reason: string;
+};
+
+export type DemoMorningWaveTest = {
+  id: string;
+  symbol: string;
+  referencePrice: number;
+  targetPrice: number;
+  stopPrice: number;
+  createdAt: number;
+  openingPrice?: number;
+  openingAt?: number;
+  observedHigh?: number;
+  observedLow?: number;
+  first30mResult?: "hedefe_ulaştı" | "zarar_kes" | "hedef_yok";
+  dayEndPrice?: number;
+  status: "bekliyor" | "açılış_gözleniyor" | "tamamlandı";
+  resultPercent?: number;
+  note: string;
 };
 
 export type DemoPosition = {
@@ -71,6 +90,7 @@ type DemoAccount = {
   closedTrades: DemoPosition[];
   signalSnapshots: DemoSignalSnapshot[];
   morningCandidates: DemoMorningCandidate[];
+  morningWaveTests: DemoMorningWaveTest[];
   processedSignalKeys: string[];
 };
 
@@ -86,6 +106,7 @@ interface DemoContextType {
   closePosition: (id: string, marketPrice: number, reason: string) => void;
   resetAccount: () => void;
   prepareMorningCandidates: (signals: DemoSignalInput[]) => void;
+  updateMorningWaveTests: (prices: Record<string, number>) => void;
 }
 
 const INITIAL_BALANCE = 100_000;
@@ -101,6 +122,7 @@ const createInitialAccount = (): DemoAccount => ({
   closedTrades: [],
   signalSnapshots: [],
   morningCandidates: [],
+  morningWaveTests: [],
   processedSignalKeys: [],
 });
 
@@ -116,6 +138,50 @@ const usableSignal = (signal: DemoSignalInput): boolean =>
   signal.price > 0 &&
   (signal.signalType === "gunluk_teyitli" ||
     (signal.signalType === "erken_hareket" && signal.score >= 50));
+
+const observeMorningWaves = (
+  tests: DemoMorningWaveTest[],
+  prices: Record<string, number>,
+  now: number,
+): DemoMorningWaveTest[] =>
+  tests.map((test) => {
+    const price = prices[test.symbol];
+    if (!Number.isFinite(price) || price <= 0) return test;
+    const next = { ...test };
+    if (!next.openingPrice) {
+      next.openingPrice = price;
+      next.openingAt = now;
+      next.observedHigh = price;
+      next.observedLow = price;
+      next.status = "açılış_gözleniyor";
+      return next;
+    }
+    next.observedHigh = Math.max(next.observedHigh ?? price, price);
+    next.observedLow = Math.min(next.observedLow ?? price, price);
+    if (!next.first30mResult && price >= next.targetPrice) {
+      next.first30mResult = "hedefe_ulaştı";
+      next.status = "tamamlandı";
+      next.resultPercent =
+        ((price - next.referencePrice) / next.referencePrice) * 100;
+      next.note = "%2,5 hedefi görüldü.";
+    } else if (!next.first30mResult && price <= next.stopPrice) {
+      next.first30mResult = "zarar_kes";
+      next.status = "tamamlandı";
+      next.resultPercent =
+        ((price - next.referencePrice) / next.referencePrice) * 100;
+      next.note = "%1,5 zarar kes seviyesi görüldü.";
+    } else if (
+      !next.first30mResult &&
+      now - (next.openingAt ?? now) >= 30 * 60 * 1000
+    ) {
+      next.first30mResult = "hedef_yok";
+      next.status = "tamamlandı";
+      next.resultPercent =
+        ((price - next.referencePrice) / next.referencePrice) * 100;
+      next.note = "İlk 30 dakikada hedef veya zarar kes görülmedi.";
+    }
+    return next;
+  });
 
 const closeInAccount = (
   account: DemoAccount,
@@ -288,7 +354,37 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
               ? `${signal.confirmations}/6 teyit ve kapanışta aşağı yön yok`
               : `Erken hareket skoru ${signal.score.toFixed(0)} ve yön aşağı değil`,
         }));
-      updateAccount({ ...account, morningCandidates: candidates });
+      const waveTests = signals
+        .filter(
+          (signal) =>
+            Number.isFinite(signal.price) &&
+            signal.price > 0 &&
+            signal.dailyChange !== undefined &&
+            signal.dailyChange <= 0 &&
+            signal.dailyChange >= -2,
+        )
+        .slice(0, 6)
+        .map((signal) => ({
+          id: `${signal.symbol}-${getDayKey(now)}-sabah-dalga`,
+          symbol: signal.symbol,
+          referencePrice: signal.price,
+          targetPrice: signal.price * 1.025,
+          stopPrice: signal.price * 0.985,
+          createdAt: now,
+          status: "bekliyor" as const,
+          note: `Kapanış değişimi ${signal.dailyChange?.toFixed(2)}%; ilk 30 dakika gözlemi`,
+        }));
+      const existingWaveIds = new Set(
+        account.morningWaveTests.map((item) => item.id),
+      );
+      updateAccount({
+        ...account,
+        morningCandidates: candidates,
+        morningWaveTests: [
+          ...account.morningWaveTests,
+          ...waveTests.filter((item) => !existingWaveIds.has(item.id)),
+        ].slice(-200),
+      });
     },
     [account, updateAccount],
   );
@@ -332,7 +428,30 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           next = applyBuy(next, signal, now);
         }
       }
+      next = {
+        ...next,
+        morningWaveTests: observeMorningWaves(
+          next.morningWaveTests,
+          prices,
+          now,
+        ),
+      };
       if (next !== account) updateAccount(next);
+    },
+    [account, updateAccount],
+  );
+
+  const updateMorningWaveTests = useCallback(
+    (prices: Record<string, number>) => {
+      const next = {
+        ...account,
+        morningWaveTests: observeMorningWaves(
+          account.morningWaveTests,
+          prices,
+          Date.now(),
+        ),
+      };
+      updateAccount(next);
     },
     [account, updateAccount],
   );
@@ -360,6 +479,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       executeSignals,
       syncSignals,
       prepareMorningCandidates,
+      updateMorningWaveTests,
       closePosition,
       resetAccount,
     }),
@@ -369,6 +489,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       executeSignals,
       syncSignals,
       prepareMorningCandidates,
+      updateMorningWaveTests,
       closePosition,
       resetAccount,
     ],
@@ -383,6 +504,7 @@ const DemoContext = createContext<DemoContextType>({
   executeSignals: () => {},
   syncSignals: () => {},
   prepareMorningCandidates: () => {},
+  updateMorningWaveTests: () => {},
   closePosition: () => {},
   resetAccount: () => {},
 });

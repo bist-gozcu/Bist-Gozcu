@@ -110,6 +110,7 @@ export default function TreydScreen() {
               score: item.erkenHareketSkoru,
               confirmations: item.teyitSayisi,
               dailyTrend: item.gunlukTrend,
+              dailyChange: item.degisimYuzde,
             })),
         );
       }

@@ -443,6 +443,73 @@ export default function DemoScreen() {
         )}
       </View>
 
+      {account.morningWaveTests.length > 0 ? (
+        <View
+          style={[
+            styles.reportCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.reportTitle, { color: colors.foreground }]}>
+            Sabah Dalga Takibi
+          </Text>
+          <Text style={[styles.subtle, { color: colors.mutedForeground }]}>
+            Akşam kapanışından sonraki ilk 30 dakikanın Demo gözlemi
+          </Text>
+          {account.morningWaveTests.slice(-6).map((test) => (
+            <View
+              key={test.id}
+              style={[styles.reportRow, { borderBottomColor: colors.border }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[styles.closedSymbol, { color: colors.foreground }]}
+                >
+                  {test.symbol}
+                </Text>
+                <Text
+                  style={[styles.subtle, { color: colors.mutedForeground }]}
+                >
+                  Referans {money(test.referencePrice)} · Hedef{" "}
+                  {money(test.targetPrice)}
+                </Text>
+                <Text
+                  style={[styles.subtle, { color: colors.mutedForeground }]}
+                >
+                  Zarar kes {money(test.stopPrice)} · {test.note}
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={[styles.value, { color: colors.foreground }]}>
+                  {test.first30mResult === "hedefe_ulaştı"
+                    ? "Hedef"
+                    : test.first30mResult === "zarar_kes"
+                      ? "Zarar kes"
+                      : test.first30mResult === "hedef_yok"
+                        ? "Hedef yok"
+                        : "Bekliyor"}
+                </Text>
+                <Text
+                  style={[
+                    styles.subtle,
+                    {
+                      color:
+                        (test.resultPercent ?? 0) >= 0
+                          ? colors.up
+                          : colors.down,
+                    },
+                  ]}
+                >
+                  {test.resultPercent === undefined
+                    ? "Açılış bekleniyor"
+                    : percent(test.resultPercent)}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       <View
         style={[
           styles.summary,
