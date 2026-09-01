@@ -443,20 +443,24 @@ export default function DemoScreen() {
         )}
       </View>
 
-      {account.morningWaveTests.length > 0 ? (
-        <View
-          style={[
-            styles.reportCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.reportTitle, { color: colors.foreground }]}>
-            Sabah Dalga Takibi
+      <View
+        style={[
+          styles.reportCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        <Text style={[styles.reportTitle, { color: colors.foreground }]}>
+          Sabah Dalga Takibi
+        </Text>
+        <Text style={[styles.subtle, { color: colors.mutedForeground }]}>
+          Akşam kapanışından sonraki ilk 30 dakikanın Demo gözlemi
+        </Text>
+        {account.morningWaveTests.length === 0 ? (
+          <Text style={[styles.empty, { color: colors.mutedForeground }]}>
+            Favoriler içinde akşam kapanışı eksiye yakın aday yok.
           </Text>
-          <Text style={[styles.subtle, { color: colors.mutedForeground }]}>
-            Akşam kapanışından sonraki ilk 30 dakikanın Demo gözlemi
-          </Text>
-          {account.morningWaveTests.slice(-6).map((test) => (
+        ) : (
+          account.morningWaveTests.slice(-6).map((test) => (
             <View
               key={test.id}
               style={[styles.reportRow, { borderBottomColor: colors.border }]}
@@ -506,9 +510,9 @@ export default function DemoScreen() {
                 </Text>
               </View>
             </View>
-          ))}
-        </View>
-      ) : null}
+          ))
+        )}
+      </View>
 
       <View
         style={[

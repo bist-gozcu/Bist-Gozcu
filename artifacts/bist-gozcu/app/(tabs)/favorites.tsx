@@ -188,8 +188,12 @@ export default function FavoritesScreen() {
                 tintColor={colors.primary}
               />
             }
-            contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
-            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingBottom: insets.bottom + 24,
+              paddingTop: 4,
+            }}
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled
           />
         )}
       </View>
@@ -219,7 +223,7 @@ const styles = StyleSheet.create({
   countText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   editBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
   editBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  favoritesViewport: { maxHeight: 8 * 58 },
+  favoritesViewport: { flex: 1, minHeight: 0 },
   rowWrap: { flexDirection: "row", alignItems: "center" },
   rowFlex: { flex: 1 },
   dragArea: { flex: 1 },
