@@ -33,6 +33,7 @@ export default function TreydScreen() {
   const [hasScanned, setHasScanned] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDemoInfo, setShowDemoInfo] = useState(false);
   const marketOpen = isPiyasaAcik();
   const dailyResults = useMemo(
     () => results.filter((item) => item.radarDurumu === "gunluk_teyitli"),
@@ -326,28 +327,50 @@ export default function TreydScreen() {
           },
         ]}
       >
-        <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>
-          Günlük Kapanış Teyitli bölümü tamamlanmış günlük mumlara dayanır.
-          Erken Hareket Radarı, ani ivmeyi daha erken gösterir ancak teyitli
-          trend değildir. Gün İçi İzleme adayları kapanışta bozulabilir. Çekirge
-          Radarı yatay birikim ve olası hazırlık gösterir; kırılım teyidi
-          gerekir. Eski veya belirsiz veriyle yeni bildirim üretilmez.
-        </Text>
-        <Pressable
-          onPress={() => router.push("/demo" as never)}
-          style={({ pressed }) => [
-            styles.demoLink,
-            {
-              backgroundColor: pressed
-                ? `${colors.primary}30`
-                : `${colors.primary}18`,
-            },
-          ]}
-        >
-          <Text style={[styles.demoLinkText, { color: colors.primary }]}>
-            Demo hesabını aç
+        <View style={styles.noticeHeader}>
+          <Pressable
+            accessibilityLabel="TREND bilgilendirmesini göster"
+            accessibilityRole="button"
+            onPress={() => setShowDemoInfo((visible) => !visible)}
+            style={({ pressed }) => [
+              styles.infoButton,
+              {
+                backgroundColor: pressed
+                  ? `${colors.primary}35`
+                  : `${colors.primary}18`,
+                borderColor: `${colors.primary}55`,
+              },
+            ]}
+          >
+            <Text style={[styles.infoButtonText, { color: colors.primary }]}>!</Text>
+          </Pressable>
+          <Text style={[styles.noticeHint, { color: colors.mutedForeground }]}>
+            Demo ve radar bilgisi
           </Text>
-        </Pressable>
+          <Pressable
+            onPress={() => router.push("/demo" as never)}
+            style={({ pressed }) => [
+              styles.demoLink,
+              {
+                backgroundColor: pressed
+                  ? `${colors.primary}30`
+                  : `${colors.primary}18`,
+              },
+            ]}
+          >
+            <Text style={[styles.demoLinkText, { color: colors.primary }]}>
+              Demo hesabını aç
+            </Text>
+          </Pressable>
+        </View>
+        {showDemoInfo && (
+          <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>
+            Günlük Kapanış Teyitli tamamlanmış günlük mumlara dayanır. Erken
+            Hareket daha erken fakat daha riskli uyarıdır. Gün İçi İzleme
+            kapanışta değişebilir. Çekirge yatay birikim adayıdır; kırılım
+            teyidi gerekir. Eski veya belirsiz veriyle yeni bildirim üretilmez.
+          </Text>
+        )}
       </View>
 
       <SectionList<TreydSinyali>
@@ -424,6 +447,9 @@ export default function TreydScreen() {
                 direnc={item.direnc}
                 direncKirildi={item.direncKirildi}
                 hacimTeyitli={item.hacimTeyitli}
+                ema20={item.ema20}
+                obvDirection={item.obvDirection}
+                obvTeyitli={item.obvTeyitli}
                 rsiValue={item.rsiValue}
                 rsiUygun={item.rsiUygun}
                 yuksekDip={item.yuksekDip}
@@ -546,13 +572,35 @@ const styles = StyleSheet.create({
   sessionDot: { width: 7, height: 7, borderRadius: 4 },
   sessionText: { fontSize: 12, fontFamily: "Inter_500Medium" },
   notice: {
-    marginHorizontal: 12,
+    marginHorizontal: 14,
     marginTop: 8,
     marginBottom: 12,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
+  },
+  noticeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  infoButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoButtonText: {
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  noticeHint: {
+    flex: 1,
+    fontSize: 11,
   },
   noticeText: { fontSize: 10, lineHeight: 14, fontFamily: "Inter_400Regular" },
   demoLink: {

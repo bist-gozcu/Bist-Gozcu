@@ -31,6 +31,62 @@ export function ema(prices: number[], period: number): number[] {
   return result;
 }
 
+export type ObvDirection = "up" | "down" | "flat";
+
+/** Fiyat yükselen günlerde hacmi ekleyip düşen günlerde çıkaran OBV serisini hesaplar. */
+export function obv(closes: number[], volumes: number[]): number[] {
+  const length = Math.min(closes.length, volumes.length);
+  const result: number[] = new Array(length).fill(NaN);
+  if (length === 0) return result;
+
+  let value = 0;
+  result[0] = value;
+  for (let i = 1; i < length; i++) {
+    const close = closes[i];
+    const previousClose = closes[i - 1];
+    const volume = volumes[i];
+    if (
+      !Number.isFinite(close) ||
+      !Number.isFinite(previousClose) ||
+      !Number.isFinite(volume) ||
+      volume < 0
+    ) {
+      result[i] = value;
+      continue;
+    }
+    if (close > previousClose) value += volume;
+    else if (close < previousClose) value -= volume;
+    result[i] = value;
+  }
+  return result;
+}
+
+/** OBV'nin son dönem yönünü ve fiyatla uyumunu sade karar desteğine çevirir. */
+export function analyzeObv(
+  closes: number[],
+  volumes: number[],
+  period = 5,
+): { direction: ObvDirection; alignedWithPrice: boolean; obvValue: number } {
+  const series = obv(closes, volumes);
+  const last = series.length - 1;
+  const previous = Math.max(0, last - period);
+  const obvValue = series[last] ?? NaN;
+  const closeChange =
+    closes.length > period && closes[previous] > 0
+      ? closes[last] - closes[previous]
+      : 0;
+  const obvChange =
+    Number.isFinite(obvValue) && Number.isFinite(series[previous])
+      ? obvValue - series[previous]
+      : 0;
+  const direction: ObvDirection =
+    obvChange > 0 ? "up" : obvChange < 0 ? "down" : "flat";
+  const alignedWithPrice =
+    (closeChange >= 0 && obvChange >= 0) ||
+    (closeChange <= 0 && obvChange <= 0);
+  return { direction, alignedWithPrice, obvValue };
+}
+
 export interface MACDResult {
   macd: number[];
   signal: number[];
@@ -390,6 +446,10 @@ export type DailyTrendDirection = "up" | "sideways" | "down";
 
 export interface DailySetupAnalysis {
   dailyTrend: DailyTrendDirection;
+  ema20: number;
+  ema20AboveSma50: boolean;
+  obvDirection: ObvDirection;
+  obvAlignedWithPrice: boolean;
   resistance: number;
   resistanceBreakout: boolean;
   relativeVolume: number;
@@ -420,6 +480,10 @@ export function analyzeDailySetup(
 ): DailySetupAnalysis {
   const empty: DailySetupAnalysis = {
     dailyTrend: "sideways",
+    ema20: NaN,
+    ema20AboveSma50: false,
+    obvDirection: "flat",
+    obvAlignedWithPrice: false,
     resistance: NaN,
     resistanceBreakout: false,
     relativeVolume: NaN,
@@ -439,8 +503,11 @@ export function analyzeDailySetup(
   if (!Number.isFinite(lastClose) || lastClose <= 0) return empty;
 
   const ma20Arr = sma(closes, 20);
+  const ema20Arr = ema(closes, 20);
   const ma50Arr = sma(closes, 50);
   const ma20 = ma20Arr[last];
+  const ema20 = ema20Arr[last];
+  const obvAnalysis = analyzeObv(closes.slice(0, last + 1), volumes.slice(0, last + 1));
   const ma50 = ma50Arr[last];
   const previousMa20 = ma20Arr[Math.max(0, last - 5)];
   const dailyTrend: DailyTrendDirection =
@@ -521,6 +588,10 @@ export function analyzeDailySetup(
 
   return {
     dailyTrend,
+    ema20,
+    ema20AboveSma50: Number.isFinite(ema20) && Number.isFinite(ma50) && ema20 > ma50,
+    obvDirection: obvAnalysis.direction,
+    obvAlignedWithPrice: obvAnalysis.alignedWithPrice,
     resistance,
     resistanceBreakout,
     relativeVolume,

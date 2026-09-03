@@ -50,6 +50,12 @@ export type TreydSinyali = {
   degisimYuzde: number;
   hacim: number;
   goreceliHacim: number;
+  /** Kısa vadeli hareket için EMA 20 değeri. */
+  ema20: number;
+  /** OBV'nin son dönem yönü. */
+  obvDirection: "up" | "down" | "flat";
+  /** OBV'nin fiyat yönüyle uyumlu olup olmadığı. */
+  obvTeyitli: boolean;
   skor: number;
   etiket: TreydEtiketi;
   trendTeyitli: boolean;
@@ -188,6 +194,9 @@ const getQuoteCandidate = (
     degisimYuzde: hisse.degisimYuzde,
     hacim: hisse.hacim,
     goreceliHacim,
+    ema20: NaN,
+    obvDirection: "flat",
+    obvTeyitli: false,
     skor,
     etiket: skor >= 0.9 ? "MOMENTUM KIRILIMI" : "TAKİP LİSTESİ",
     trendTeyitli: false,
@@ -333,8 +342,9 @@ const calculateCekirge = (
           : 0;
   const directionScore =
     daily.dailyTrend === "down" ? 0 : lastChange >= 0 ? 10 : 4;
+  const obvScore = daily.obvDirection === "up" && daily.obvAlignedWithPrice ? 8 : 0;
   const score = clamp(
-    rangeScore + supportScore + volumeScore + resistanceScore + directionScore,
+    rangeScore + supportScore + volumeScore + resistanceScore + directionScore + obvScore,
     0,
     100,
   );
@@ -344,6 +354,7 @@ const calculateCekirge = (
     `Son 5 gün hacmi ortalamanın ${volumeRatio > 0 ? `${volumeRatio.toFixed(2)} katı` : "hesaplanamadı"}`,
     `Üst banda/dirence mesafe %${nearResistance.toFixed(1)}`,
     `Günlük yön: ${daily.dailyTrend === "down" ? "aşağı" : daily.dailyTrend === "up" ? "yukarı" : "yatay"}`,
+    `${obvScore > 0 ? "✓" : "—"} OBV yönü: ${daily.obvDirection === "up" ? "yukarı ve fiyatla uyumlu" : daily.obvDirection === "down" ? "aşağı" : "yatay"}`,
   ];
   const risk =
     daily.dailyTrend === "down"
@@ -515,6 +526,15 @@ const calculateEarlyMovement = (
           ? 4
           : 0;
 
+  const shortTrendScore =
+    Number.isFinite(daily.ema20) &&
+    completedClose > daily.ema20 &&
+    daily.ema20AboveSma50
+      ? 5
+      : 0;
+  const obvScore =
+    daily.obvDirection === "up" && daily.obvAlignedWithPrice ? 5 : 0;
+
   const marketBreadthScore =
     context.marketPositiveRatio >= 0.6
       ? 7
@@ -537,6 +557,8 @@ const calculateEarlyMovement = (
         marketRelativeScore +
         sectorRelativeScore +
         openingScore +
+        shortTrendScore +
+        obvScore +
         marketBreadthScore +
         sectorBreadthScore,
     ),
@@ -570,6 +592,8 @@ const calculateEarlyMovement = (
     `${marketRelativeScore >= 7 ? "✓" : "—"} BIST medyanına göre ${signedPercent(marketRelative)} · ${piyasaHavasi}`,
     `${sectorRelativeScore >= 7 ? "✓" : "—"} ${sector ?? "Sektör"} medyanına göre ${signedPercent(sectorRelative)}`,
     `${openingScore >= 7 ? "✓" : "—"} Açılış davranışı: ${opening ? `${opening.recentUpDays}/5 yukarı, ${opening.recentDownDays}/5 aşağı` : "hesaplanamadı"}`,
+    `${shortTrendScore > 0 ? "✓" : "—"} EMA 20: ${Number.isFinite(daily.ema20) ? (completedClose > daily.ema20 ? "fiyat üzerinde" : "fiyat altında") : "hesaplanamadı"}`,
+    `${obvScore > 0 ? "✓" : "—"} OBV: ${daily.obvDirection === "up" ? "yukarı yönlü" : daily.obvDirection === "down" ? "zayıf" : "yatay"}`,
     `${marketBreadthScore + sectorBreadthScore >= 8 ? "✓" : "—"} Genişlik: BIST ${Math.round(context.marketPositiveRatio * 100)}% pozitif${sectorSnapshot ? ` · sektör ${Math.round(sectorSnapshot.positiveRatio * 100)}%` : ""}`,
   ];
 
@@ -701,6 +725,12 @@ const confirmCandidate = async (
       macdHistogram > 0 &&
       macdHistogram >= previousMacdHistogram;
     const trendConfirmed = daily.dailyTrend === "up";
+    const ema20Confirmed =
+      Number.isFinite(daily.ema20) &&
+      Number.isFinite(daily.resistance) &&
+      chart.closes[lastCompletedIdx] > daily.ema20;
+    const obvConfirmed =
+      daily.obvDirection === "up" && daily.obvAlignedWithPrice;
     const confirmations = [
       trendConfirmed,
       daily.resistanceBreakout,
@@ -747,6 +777,12 @@ const confirmCandidate = async (
       teyitler,
       "MACD histogramı pozitif ve yükseliyor",
       macdConfirmed,
+    );
+    teyitler.push(
+      `${ema20Confirmed ? "✓" : "—"} Kısa vadeli EMA 20: ${ema20Confirmed ? "fiyat üzerinde" : "teyit yok"}`,
+    );
+    teyitler.push(
+      `${obvConfirmed ? "✓" : "—"} OBV: ${obvConfirmed ? "fiyatla uyumlu yükseliyor" : "ek hacim teyidi yok"}`,
     );
 
     const strongBuy =
@@ -799,6 +835,9 @@ const confirmCandidate = async (
     return {
       ...candidate,
       radarDurumu,
+      ema20: daily.ema20,
+      obvDirection: daily.obvDirection,
+      obvTeyitli: obvConfirmed,
       skor:
         candidate.skor +
         teyitSayisi * 0.2 +

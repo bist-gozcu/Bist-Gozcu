@@ -18,6 +18,9 @@ interface DecisionCardProps {
   direnc?: number;
   direncKirildi?: boolean;
   hacimTeyitli?: boolean;
+  ema20?: number;
+  obvDirection?: "up" | "down" | "flat";
+  obvTeyitli?: boolean;
   rsiValue?: number;
   rsiUygun?: boolean;
   yuksekDip?: boolean;
@@ -75,6 +78,9 @@ export default function DecisionCard({
   direnc,
   direncKirildi = false,
   hacimTeyitli = false,
+  ema20,
+  obvDirection = "flat",
+  obvTeyitli = false,
   rsiValue,
   rsiUygun = false,
   yuksekDip = false,
@@ -121,6 +127,15 @@ export default function DecisionCard({
   const resistanceLabel = Number.isFinite(direnc)
     ? `Direnç ₺${direnc?.toFixed(2)}`
     : "Direnç yok";
+  const ema20Label = Number.isFinite(ema20)
+    ? `EMA 20 ₺${ema20?.toFixed(2)}`
+    : "EMA 20 yok";
+  const obvLabel =
+    obvDirection === "up"
+      ? "OBV yukarı"
+      : obvDirection === "down"
+        ? "OBV aşağı"
+        : "OBV yatay";
   const radarLabel =
     radarDurumu === "gunluk_teyitli"
       ? "Günlük kapanış teyitli"
@@ -273,6 +288,12 @@ export default function DecisionCard({
           colors={colors}
         />
         <SignalChip label="Hacim" confirmed={hacimTeyitli} colors={colors} />
+        <SignalChip
+          label={ema20Label}
+          confirmed={Number.isFinite(ema20) && guncelFiyat > (ema20 as number)}
+          colors={colors}
+        />
+        <SignalChip label={obvLabel} confirmed={obvTeyitli} colors={colors} />
         <SignalChip label={rsiLabel} confirmed={rsiUygun} colors={colors} />
         <SignalChip label="Yüksek dip" confirmed={yuksekDip} colors={colors} />
         <SignalChip
