@@ -85,6 +85,7 @@ export default function TabLayout() {
           title: "Portföy",
           tabBarLabel: "Portföy",
           tabBarIcon: ({ color }) => <IconTrendingUp color={color} size={22} />,
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -93,6 +94,7 @@ export default function TabLayout() {
           title: "Alarmlar",
           tabBarLabel: "Alarmlar",
           tabBarIcon: ({ color }) => <IconTrendingUp color={color} size={22} />,
+          href: null,
         }}
       />
       <Tabs.Screen

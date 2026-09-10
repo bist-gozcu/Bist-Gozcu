@@ -234,11 +234,13 @@ async function fetchQuoteFromChart(
     const lastIndex = validIndexes.at(-1);
     if (lastIndex == null) return null;
 
+    // Günlük yüzde değişim: chartPreviousClose range başlangıcındaki
+    // kapanıştır (3mo=3 ay önce), dünkü kapanış DEĞİLDİR.
+    // Bu yüzden closes dizisindeki sondan bir önceki geçerli kapanışı kullan.
+    const secondLastIndex = validIndexes.length >= 2 ? validIndexes.at(-2)! : lastIndex;
     const price =
       asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
-    const previousClose =
-      asNumber(meta.chartPreviousClose) ||
-      asNumber(closes[validIndexes.at(-2) ?? lastIndex]);
+    const previousClose = asNumber(closes[secondLastIndex]);
     const change = price - previousClose;
     const averageVolume = volumes
       .map(asNumber)
@@ -483,11 +485,13 @@ async function fetchMacroQuotesDirect(symbols: string[]): Promise<QuoteData[]> {
             .filter((index) => index >= 0);
           const lastIndex = validIndexes.at(-1);
           if (lastIndex == null) continue;
+          // Günlük yüzde değişim: chartPreviousClose range başlangıcındaki
+          // kapanıştır (5d=5 gün önce), dünkü kapanış DEĞİLDİR.
+          // Bu yüzden closes dizisindeki sondan bir önceki geçerli kapanışı kullan.
+          const secondLastIndex = validIndexes.length >= 2 ? validIndexes.at(-2)! : lastIndex;
           const price =
             asNumber(meta.regularMarketPrice) || asNumber(closes[lastIndex]);
-          const previousClose =
-            asNumber(meta.chartPreviousClose) ||
-            asNumber(closes[validIndexes.at(-2) ?? lastIndex]);
+          const previousClose = asNumber(closes[secondLastIndex]);
           if (price <= 0) continue;
           const volumeValues = (quote.volume ?? [])
             .map(asNumber)
