@@ -13,11 +13,6 @@
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
-    "updates": {
-      "url": "https://u.expo.dev/435c8db3-09ed-4f21-a023-f351ad4b6162",
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
-    },
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -75,8 +70,14 @@
     },
     "extra": {
       "eas": {
-        "projectId": "435c8db3-09ed-4f21-a023-f351ad4b6162"
+        "projectId": "9e868a2b-3b3e-41ce-820c-c0a6f8fd4dc6"
       }
+    },
+    "owner": "careki73",
+    "updates": {
+      "url": "https://u.expo.dev/9e868a2b-3b3e-41ce-820c-c0a6f8fd4dc6",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     }
   }
 }
