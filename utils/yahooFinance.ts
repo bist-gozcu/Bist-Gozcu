@@ -144,16 +144,17 @@ async function fetchWithTimeout(
   }
 }
 
-const PERMANENT_PROXY_BASE = "https://bist-gozcu--careki73.replit.app/api";
+/**
+ * Proxy sunucu adresini ortam değişkeninden alır.
+ * EXPO_PUBLIC_DOMAIN ayarlıysa onu kullanır; yoksa varsayılan Replit proxy kullanılır.
+ * Bu değer .env dosyası veya EAS build ortam değişkeni ile değiştirilebilir.
+ */
+const DEFAULT_PROXY_DOMAIN = "bist-gozcu--careki73.replit.app";
 
 function getProxyBase(): string {
   const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-  // Android’da EAS ortam değişkeni boş veya eski olsa bile kalıcı proxy kesin kullanılır.
-  if (
-    !configuredDomain ||
-    configuredDomain === "bist-gozcu--careki73.replit.app"
-  ) {
-    return PERMANENT_PROXY_BASE;
+  if (!configuredDomain) {
+    return `https://${DEFAULT_PROXY_DOMAIN}/api`;
   }
   return `https://${configuredDomain}/api`;
 }

@@ -57,13 +57,17 @@ type QuoteResponse = {
   };
 };
 
+/**
+ * API proxy adresini EXPO_PUBLIC_DOMAIN ortam değişkeninden alır.
+ * Varsayılan: bist-gozcu--careki73.replit.app
+ * .env dosyası ile değiştirilebilir.
+ */
+const DEFAULT_API_DOMAIN = "bist-gozcu--careki73.replit.app";
+
 const getApiBase = (): string => {
   const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-  const domain = configuredDomain || "bist-gozcu--careki73.replit.app";
-  if (domain) return `https://${domain}/api`;
-  // Native APK da artık kalıcı HTTPS proxy kullanır; göreli /api yalnızca web için kullanılır.
-  if (Platform.OS !== "web") return "";
-  return "/api";
+  const domain = configuredDomain || DEFAULT_API_DOMAIN;
+  return `https://${domain}/api`;
 };
 
 export const parseTRNumber = (
