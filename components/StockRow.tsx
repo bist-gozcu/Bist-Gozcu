@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -9,11 +9,11 @@ import {
 import Svg, { Polygon } from "react-native-svg";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useColors } from "@/hooks/useColors";
-import { StockQuote } from "@/contexts/StockContext";
-import { useFavorites } from "@/contexts/FavoritesContext";
-import { getStockMeta } from "@/constants/bistStocks";
-import { IconStar } from "@/components/TabIcon";
+import { useColors } from "hooks/useColors";
+import { StockQuote } from "contexts/StockContext";
+import { useFavorites } from "contexts/FavoritesContext";
+import { getStockMeta } from "constants/bistStocks";
+import { IconStar } from "components/TabIcon";
 
 type SignalDir = "buy" | "sell" | "neutral";
 
@@ -81,7 +81,7 @@ interface StockRowProps {
   onFavoriteAdded?: (symbol: string) => void;
 }
 
-export default function StockRow({
+const StockRow = memo(function StockRow({
   symbol,
   quote,
   showFavoriteBtn = true,
@@ -199,7 +199,9 @@ export default function StockRow({
       )}
     </View>
   );
-}
+});
+
+export default StockRow;
 
 const styles = StyleSheet.create({
   row: {

@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+import { logger } from "@/utils/logger";
 
 const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol));
 
@@ -43,15 +44,23 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) {
-        const parsed: PortfolioEntry[] = JSON.parse(raw);
-        setEntries(parsed.filter((e) => VALID_SYMBOLS.has(e.symbol)));
+        try {
+          const parsed: PortfolioEntry[] = JSON.parse(raw);
+          setEntries(parsed.filter((e) => VALID_SYMBOLS.has(e.symbol)));
+        } catch (e) {
+          logger.warn("PortfolioContext", "Portföy okuma hatası", e);
+        }
       }
+    }).catch((e) => {
+      logger.warn("PortfolioContext", "Portföy depolama erişim hatası", e);
     });
   }, []);
 
   const save = useCallback((data: PortfolioEntry[]) => {
     setEntries(data);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data)).catch((e) => {
+      logger.warn("PortfolioContext", "Portföy kaydetme hatası", e);
+    });
   }, []);
 
   const addEntry = useCallback((symbol: string, quantity: number, avgPrice: number, note = "") => {

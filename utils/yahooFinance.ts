@@ -96,7 +96,7 @@ export interface StockOverview {
 }
 export type IntradayInterval = "5m" | "10m" | "15m" | "60m";
 
-import { Platform } from "react-native";
+import { logger } from "@/utils/logger";
 
 const YF_HEADERS = {
   "User-Agent":
@@ -179,7 +179,9 @@ async function getCrumb(): Promise<string | null> {
         return cachedCrumb;
       }
     }
-  } catch {}
+  } catch (e) {
+    logger.warn("yahooFinance", "Crumb alınamadı", e);
+  }
   return null;
 }
 
@@ -266,7 +268,8 @@ async function fetchQuoteFromChart(
       averageDailyVolume3Month: averageVolume,
       ...normalizeQuoteMetadata(meta, "Yahoo chart fallback"),
     };
-  } catch {
+  } catch (e) {
+    logger.warn("yahooFinance", "Chart fallback quote alınamadı", e);
     return null;
   }
 }
@@ -448,8 +451,8 @@ async function fetchProxyChunk(
       if (!res.ok) continue;
       const results = normalizeProxyResults(await res.json());
       if (results.length > 0) return results;
-    } catch {
-      // Replit free deployment may need one retry after waking from sleep.
+    } catch (e) {
+      logger.debug("yahooFinance", "Proxy chunk denemesi başarısız (uyku modu olabilir)", e);
     }
   }
   return [];
@@ -515,8 +518,8 @@ async function fetchMacroQuotesDirect(symbols: string[]): Promise<QuoteData[]> {
             averageDailyVolume3Month: averageVolume,
             ...normalizeQuoteMetadata(meta, "Yahoo macro chart fallback"),
           } as QuoteData;
-        } catch {
-          // Bir Yahoo hostu kota veya ağ hatası verirse diğer host denenir.
+        } catch (e) {
+          logger.debug("yahooFinance", "Yahoo host hatası, diğer host deneniyor", e);
         }
       }
       return null;
@@ -536,8 +539,8 @@ export async function fetchMacroQuotes(
       const proxyResults = normalizeProxyResults(await res.json());
       if (proxyResults.length > 0) return proxyResults;
     }
-  } catch {
-    // Eski proxy sürümlerinde makro rotası olmayabilir; doğrudan chart fallback’i denenir.
+  } catch (e) {
+    logger.debug("yahooFinance", "Proxy makro rotası başarısız, chart fallback deneniyor", e);
   }
   return fetchMacroQuotesDirect(symbols);
 }
@@ -619,8 +622,8 @@ export async function fetchCryptoQuotes(): Promise<QuoteData[]> {
       });
       if (quotes.length > 0) return quotes;
     }
-  } catch {
-    // Binance erişimi yoksa CoinGecko yedek kaynağı denenir.
+  } catch (e) {
+    logger.debug("yahooFinance", "Binance erişimi başarısız, CoinGecko deneniyor", e);
   }
 
   try {
@@ -657,7 +660,8 @@ export async function fetchCryptoQuotes(): Promise<QuoteData[]> {
         ),
       ];
     });
-  } catch {
+  } catch (e) {
+    logger.warn("yahooFinance", "Kripto fiyatları alınamadı", e);
     return [];
   }
 }
@@ -708,8 +712,8 @@ export async function fetchStockOverview(
         source: String(payload.source ?? "BIST Gözcü proxy"),
       };
     }
-  } catch {
-    // Eski veya kota dolu proxy sürümlerinde aşağıdaki düşük maliyetli fallback denenir.
+  } catch (e) {
+    logger.debug("yahooFinance", "Proxy stock overview başarısız, düşük maliyetli fallback deneniyor", e);
   }
 
   try {
@@ -725,7 +729,8 @@ export async function fetchStockOverview(
       news: fallbackNews,
       source: "Yahoo fiyat/haber fallback’i; temel oran verisi yok",
     };
-  } catch {
+  } catch (e) {
+    logger.warn("yahooFinance", "Stock overview fallback başarısız", e);
     return null;
   }
 }
@@ -741,7 +746,8 @@ export async function fetchMarketNews(
     if (!res.ok) return [];
     const payload = (await res.json()) as { news?: MarketNews[] };
     return Array.isArray(payload.news) ? payload.news : [];
-  } catch {
+  } catch (e) {
+    logger.warn("yahooFinance", "Piyasa haberleri alınamadı", e);
     return [];
   }
 }
@@ -909,7 +915,9 @@ export async function fetchChartData(
         if (result && chartIntervalMatches(result, yahooInterval))
           return finish(result);
       }
-    } catch {}
+    } catch (e) {
+      logger.debug("yahooFinance", "Proxy grafik verisi başarısız, doğrudan Yahoo v8 deneniyor", e);
+    }
   }
 
   try {
@@ -921,7 +929,9 @@ export async function fetchChartData(
       if (result && chartIntervalMatches(result, yahooInterval))
         return finish(result);
     }
-  } catch {}
+  } catch (e) {
+    logger.debug("yahooFinance", "Doğrudan Yahoo chart v8 başarısız, crumb fallback deneniyor", e);
+  }
 
   try {
     const crumb = await getCrumb();
@@ -933,7 +943,8 @@ export async function fetchChartData(
     return result && chartIntervalMatches(result, yahooInterval)
       ? finish(result)
       : null;
-  } catch {
+  } catch (e) {
+    logger.warn("yahooFinance", "Chart verisi tüm yöntemlerle alınamadı", e);
     return null;
   }
 }

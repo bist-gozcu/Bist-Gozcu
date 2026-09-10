@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logger } from "@/utils/logger";
 
 export type DemoSignalType =
   | "erken_hareket"
@@ -301,7 +302,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         if (!raw) return;
         try {
           setAccount({ ...createInitialAccount(), ...JSON.parse(raw) });
-        } catch {
+        } catch (e) {
+          logger.warn("DemoContext", "Demo hesap okuma hatası", e);
           setAccount(createInitialAccount());
         }
       })

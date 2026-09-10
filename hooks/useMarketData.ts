@@ -8,6 +8,7 @@ import {
   getFreshnessWarning,
 } from "@/utils/yahooFinance";
 import { isPiyasaAcik } from "@/utils/seansKontrol";
+import { logger } from "@/utils/logger";
 
 const OPEN_MARKET_CACHE_TTL = 2 * 60 * 1000;
 const CLOSED_MARKET_CACHE_TTL = 15 * 60 * 1000;
@@ -72,7 +73,8 @@ const readCache = async (
     const expired = Date.now() - cached.ts > getCacheTtl();
     if (allowExpired || !expired)
       return withCacheFreshness(cached.data, cached.ts, expired);
-  } catch {
+  } catch (e) {
+    logger.warn("useMarketData", "Önbellek okuma hatası", e);
     return null;
   }
   return null;

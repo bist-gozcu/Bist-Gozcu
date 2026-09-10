@@ -301,6 +301,11 @@ export default function MarketScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => null}
+          maxToRenderPerBatch={15}
+          windowSize={5}
+          removeClippedSubviews={true}
+          initialNumToRender={12}
+          updateCellsBatchingPeriod={100}
         />
       )}
     </View>

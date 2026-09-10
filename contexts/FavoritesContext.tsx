@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createContext, useContext } from "react";
 import { ALL_BIST_STOCKS } from "@/constants/bistStocks";
+import { logger } from "@/utils/logger";
 
 const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((stock) => stock.symbol));
 const SYMBOL_PATTERN = /^[A-Z0-9]{3,6}$/;
@@ -52,8 +53,8 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
     favoritesRef.current = normalized;
     setFavorites(normalized);
     localMutationRef.current += 1;
-    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized)).catch(() => {
-      // Depolama kullanılamazsa favoriler en azından mevcut oturumda korunur.
+    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized)).catch((e) => {
+      logger.warn("FavoritesContext", "Favori kaydetme hatası", e);
     });
   }, []);
 
@@ -78,8 +79,8 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
             await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
           }
         }
-      } catch {
-        // Bozuk veya kullanılamayan depolama uygulamayı durdurmaz.
+      } catch (e) {
+        logger.warn("FavoritesContext", "Favori hydrate hatası", e);
       } finally {
         if (active) setReady(true);
       }

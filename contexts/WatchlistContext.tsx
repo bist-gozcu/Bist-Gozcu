@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ALL_BIST_STOCKS, BIST30 } from "@/constants/bistStocks";
+import { logger } from "@/utils/logger";
 
 const VALID_SYMBOLS = new Set(ALL_BIST_STOCKS.map((s) => s.symbol.toUpperCase()));
 const SYMBOL_PATTERN = /^[A-Z0-9]{3,6}$/;
@@ -54,7 +55,8 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
       watchlistRef.current = parsed;
       setWatchlist(parsed);
       setReady(true);
-    }).catch(() => {
+    }).catch((e) => {
+      logger.warn("WatchlistContext", "Watchlist okuma hatası", e);
       if (active) setReady(true);
     });
     return () => { active = false; };

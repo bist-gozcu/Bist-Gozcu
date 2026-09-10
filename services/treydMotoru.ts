@@ -1,3 +1,4 @@
+import { logger } from "@/utils/logger";
 import { Hisse } from "@/services/collectApi";
 import { BIST30_SET, BIST50_SET, getStockMeta } from "@/constants/bistStocks";
 import { DataFreshness, fetchChartData } from "@/utils/yahooFinance";
@@ -861,7 +862,8 @@ const confirmCandidate = async (
       ...cekirge,
       kararDestegi,
     };
-  } catch {
+  } catch (err) {
+    logger.warn("confirmCandidate: tarihsel veri alınamadı", { symbol: candidate.symbol, err });
     return {
       ...candidate,
       etiket: "TAKİP LİSTESİ",
