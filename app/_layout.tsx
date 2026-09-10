@@ -9,7 +9,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Notifications from "expo-notifications";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import * as Updates from "expo-updates";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -50,6 +51,29 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  // OTA güncelleme kontrolü
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    if (__DEV__) return;
+    (async () => {
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          setUpdating(true);
+          const result = await Updates.fetchUpdateAsync();
+          if (result.isNew) {
+            await Updates.reloadAsync();
+          }
+          setUpdating(false);
+        }
+      } catch (e) {
+        // Güncelleme hatası — sessizce yoksay
+        setUpdating(false);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
