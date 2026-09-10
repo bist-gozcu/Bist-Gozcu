@@ -1,0 +1,137 @@
+export interface StockMeta {
+  symbol: string;
+  name: string;
+  sector: string;
+}
+
+export const BIST30: StockMeta[] = [
+  { symbol: "AKBNK", name: "Akbank T.A.Ş.", sector: "Bankacılık" },
+  { symbol: "ASELS", name: "Aselsan A.Ş.", sector: "Savunma" },
+  { symbol: "BIMAS", name: "BİM Birleşik Mağazalar", sector: "Perakende" },
+  { symbol: "DSTKF", name: "Destek Finans Faktoring", sector: "Finans" },
+  { symbol: "EKGYO", name: "Emlak Konut GYO", sector: "Gayrimenkul" },
+  { symbol: "EREGL", name: "Ereğli Demir Çelik", sector: "Metal" },
+  { symbol: "FROTO", name: "Ford Otomotiv Sanayi", sector: "Otomotiv" },
+  { symbol: "GARAN", name: "Garanti BBVA", sector: "Bankacılık" },
+  { symbol: "ISCTR", name: "T. İş Bankası (C)", sector: "Bankacılık" },
+  { symbol: "KCHOL", name: "Koç Holding", sector: "Holding" },
+  { symbol: "KRDMD", name: "Kardemir (D)", sector: "Metal" },
+  { symbol: "MGROS", name: "Migros Ticaret", sector: "Perakende" },
+  { symbol: "PETKM", name: "Petkim Petrokimya", sector: "Kimya" },
+  { symbol: "PGSUS", name: "Pegasus Hava Taşımacılığı", sector: "Havacılık" },
+  { symbol: "SAHOL", name: "Sabancı Holding", sector: "Holding" },
+  { symbol: "SASA", name: "SASA Polyester Sanayi", sector: "Kimya" },
+  { symbol: "SISE", name: "Türkiye Şişe ve Cam", sector: "Cam" },
+  { symbol: "TAVHL", name: "TAV Havalimanları", sector: "Havacılık" },
+  { symbol: "TCELL", name: "Turkcell İletişim", sector: "Telekomünikasyon" },
+  { symbol: "THYAO", name: "Türk Hava Yolları", sector: "Havacılık" },
+  { symbol: "TOASO", name: "Tofaş Türk Otomobil Fab.", sector: "Otomotiv" },
+  { symbol: "TRALT", name: "TRALT", sector: "Diğer" },
+  { symbol: "TTKOM", name: "Türk Telekom", sector: "Telekomünikasyon" },
+  { symbol: "TUPRS", name: "Tüpraş", sector: "Enerji" },
+  { symbol: "VAKBN", name: "T. Vakıflar Bankası", sector: "Bankacılık" },
+  { symbol: "YKBNK", name: "Yapı Kredi Bankası", sector: "Bankacılık" },
+];
+
+export const BIST30_SYMBOLS = BIST30.map((stock) => stock.symbol) as readonly string[];
+
+// 21 Ağustos 2026 kapanışıyla alınan BIST 50 snapshot’ı; endeks üyeliği dönemsel olarak değişebilir.
+export const BIST50_SYMBOLS = [
+  "AEFES", "AKBNK", "AKSEN", "ALARK", "ASELS", "ASTOR", "BIMAS", "BRSAN", "BTCIM", "CANTE",
+  "CCOLA", "CIMSA", "DSTKF", "ECILC", "EFOR", "EKGYO", "ENKAI", "EREGL", "FROTO", "GARAN",
+  "GLRMK", "GUBRF", "HALKB", "HEKTS", "ISCTR", "KCHOL", "KRDMD", "KTLEV", "KUYAS", "MGROS",
+  "MIATK", "OYAKC", "PASEU", "PETKM", "PGSUS", "SAHOL", "SASA", "SISE", "TAVHL", "TCELL",
+  "THYAO", "TOASO", "TRALT", "TRMET", "TTKOM", "TUPRS", "TURSG", "ULKER", "VAKBN", "YKBNK",
+] as const;
+
+export const BIST30_SET = new Set(BIST30_SYMBOLS);
+export const BIST50_SET = new Set<string>(BIST50_SYMBOLS);
+
+export const ALL_BIST_STOCKS: StockMeta[] = [
+  ...BIST30,
+  { symbol: "BTCIM", name: "BTCIM", sector: "Çimento" },
+  { symbol: "ECILC", name: "ECILC", sector: "Sağlık" },
+  { symbol: "EFOR", name: "EFOR", sector: "Gıda" },
+  { symbol: "GLRMK", name: "GLRMK", sector: "İnşaat" },
+  { symbol: "HALKB", name: "Halkbank", sector: "Bankacılık" },
+  { symbol: "KTLEV", name: "KTLEV", sector: "Finans" },
+  { symbol: "KUYAS", name: "KUYAS", sector: "Diğer" },
+  { symbol: "TRMET", name: "TRMET", sector: "Diğer" },
+  { symbol: "AEFES", name: "Anadolu Efes Biracılık", sector: "İçecek" },
+  { symbol: "AGHOL", name: "AG Anadolu Grubu", sector: "Holding" },
+  { symbol: "AKCNS", name: "Akçansa Çimento", sector: "Çimento" },
+  { symbol: "AKSEN", name: "Aksa Enerji", sector: "Enerji" },
+  { symbol: "ALARK", name: "Alarko Holding", sector: "Holding" },
+  { symbol: "ALBRK", name: "Albaraka Türk", sector: "Bankacılık" },
+  { symbol: "ASTOR", name: "Astor Enerji", sector: "Enerji" },
+  { symbol: "ASUZU", name: "Anadolu Isuzu", sector: "Otomotiv" },
+  { symbol: "AYDEM", name: "Aydem Enerji", sector: "Enerji" },
+  { symbol: "BAGFS", name: "Bagfaş Bandırma Gübre", sector: "Kimya" },
+  { symbol: "BERA", name: "Bera Holding", sector: "Holding" },
+  { symbol: "BRSAN", name: "Borusan Mannesmann", sector: "Metal" },
+  { symbol: "BRYAT", name: "Borusan Yatırım", sector: "Holding" },
+  { symbol: "CCOLA", name: "Coca-Cola İçecek", sector: "İçecek" },
+  { symbol: "CVKMD", name: "Çevre Enerji", sector: "Enerji" },
+  { symbol: "EUPWR", name: "Europower Enerji", sector: "Enerji" },
+  { symbol: "EUREN", name: "Euro Enerji", sector: "Enerji" },
+  { symbol: "GWIND", name: "Galata Wind Enerji", sector: "Enerji" },
+  { symbol: "HEKTS", name: "Hektaş Ticaret", sector: "Kimya" },
+  { symbol: "ISMEN", name: "İş Yatırım Menkul", sector: "Finans" },
+  { symbol: "KLSER", name: "Kaleseramik", sector: "Yapı" },
+  { symbol: "MIATK", name: "Mia Teknoloji", sector: "Teknoloji" },
+  { symbol: "OBAMS", name: "Oba Makarnacılık", sector: "Gıda" },
+  { symbol: "OYAKC", name: "Oyak Çimento", sector: "Çimento" },
+  { symbol: "PASEU", name: "Pasifik Eurasia", sector: "Sigorta" },
+  { symbol: "REEDR", name: "Reeder Teknoloji", sector: "Teknoloji" },
+  { symbol: "SDTTR", name: "SDT Uzay ve Savunma", sector: "Savunma" },
+  { symbol: "TABGD", name: "Tabgıda", sector: "Gıda" },
+  { symbol: "VAKKO", name: "Vakko Tekstil", sector: "Tekstil" },
+  { symbol: "BUCIM", name: "Bursa Çimento", sector: "Çimento" },
+  { symbol: "CANTE", name: "Çanakkale Seramik", sector: "Yapı" },
+  { symbol: "CEMTS", name: "Çimtaş Çelik", sector: "Metal" },
+  { symbol: "CIMSA", name: "Çimsa Çimento", sector: "Çimento" },
+  { symbol: "DOAS", name: "Doğuş Otomotiv", sector: "Otomotiv" },
+  { symbol: "DOHOL", name: "Doğan Holding", sector: "Holding" },
+  { symbol: "ENKAI", name: "Enka İnşaat", sector: "İnşaat" },
+  { symbol: "ENJSA", name: "Enerjisa Enerji", sector: "Enerji" },
+  { symbol: "GESAN", name: "Gensan Enerji", sector: "Enerji" },
+  { symbol: "GUBRF", name: "Gübre Fabrikaları", sector: "Kimya" },
+  { symbol: "IPEKE", name: "İpek Enerji", sector: "Enerji" },
+  { symbol: "ISGYO", name: "İş GYO", sector: "Gayrimenkul" },
+  { symbol: "IZDMC", name: "İzdemir Enerji", sector: "Enerji" },
+  { symbol: "KAREL", name: "Karel Elektronik", sector: "Elektronik" },
+  { symbol: "KLNMA", name: "Türkiye Kalkınma Bank", sector: "Bankacılık" },
+  { symbol: "KONTR", name: "Kontrolmatik Teknoloji", sector: "Teknoloji" },
+  { symbol: "KORDS", name: "Kordsa Global", sector: "Tekstil" },
+  { symbol: "KRONT", name: "Kronos Enerji", sector: "Enerji" },
+  { symbol: "LOGO", name: "Logo Yazılım", sector: "Yazılım" },
+  { symbol: "MAVI", name: "Mavi Giyim", sector: "Tekstil" },
+  { symbol: "NETAS", name: "Netaş Telekomünikasyon", sector: "Teknoloji" },
+  { symbol: "NUHCM", name: "Nuh Çimento", sector: "Çimento" },
+  { symbol: "OTKAR", name: "Otokar Otomobil", sector: "Otomotiv" },
+  { symbol: "PARSN", name: "Parsan Makina", sector: "Makina" },
+  { symbol: "POLHO", name: "Polisan Holding", sector: "Kimya" },
+  { symbol: "RTALB", name: "RTA Laboratuvarları", sector: "Sağlık" },
+  { symbol: "SELEC", name: "Selçuk Ecza", sector: "Sağlık" },
+  { symbol: "SKBNK", name: "Şekerbank", sector: "Bankacılık" },
+  { symbol: "SMRTG", name: "Smart Güneş Enerjisi", sector: "Enerji" },
+  { symbol: "TATGD", name: "Tat Gıda Sanayi", sector: "Gıda" },
+  { symbol: "TKNSA", name: "Teknosa İç ve Dış Ticaret", sector: "Elektronik" },
+  { symbol: "TLMAN", name: "Türkiye İş Makineleri", sector: "Makina" },
+  { symbol: "TMSN", name: "Tümosan Motor", sector: "Makina" },
+  { symbol: "TRGYO", name: "Torunlar GYO", sector: "Gayrimenkul" },
+  { symbol: "TTRAK", name: "Türk Traktör", sector: "Makina" },
+  { symbol: "TURSG", name: "Türkiye Sigorta", sector: "Sigorta" },
+  { symbol: "ULKER", name: "Ülker Bisküvi", sector: "Gıda" },
+  { symbol: "VESTL", name: "Vestel Elektronik", sector: "Elektronik" },
+  { symbol: "YEOTK", name: "Yeo Teknoloji", sector: "Teknoloji" },
+  { symbol: "ZRGYO", name: "Ziraat GYO", sector: "Gayrimenkul" },
+];
+
+export const UNIQUE_BIST_STOCKS: StockMeta[] = Array.from(
+  new Map(ALL_BIST_STOCKS.map((stock) => [stock.symbol, stock])).values(),
+);
+
+export function getStockMeta(symbol: string): StockMeta | undefined {
+  return UNIQUE_BIST_STOCKS.find((s) => s.symbol === symbol.trim().toUpperCase());
+}

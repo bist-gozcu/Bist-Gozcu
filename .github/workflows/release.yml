@@ -1,0 +1,64 @@
+# BIST Gözcü — Otomatik Sürüm Yayınlama
+# v* tag'ı itildiğinde GitHub Release + OTA güncelleme yayınlar
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: GitHub Release Oluştur
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "BIST Gözcü v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## BIST Gözcü v${{ steps.version.outputs.VERSION }}
+
+            ### Değişiklikler
+            - Release notları otomatik oluşturuldu.
+            - Detaylar için commit geçmişine bakın.
+
+            ### İndirme
+            - EAS Build üzerinden APK/AAB indirilebilir.
+            - Expo OTA güncellemesi otomatik yayınlanacaktır.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ota-update:
+    name: OTA Güncelleme Yayınla
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Publish OTA Update
+        run: eas update --branch production --message "Release v${{ steps.version.outputs.VERSION }}"
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Expo Dev Server",
+      "type": "reactnative",
+      "request": "launch",
+      "platform": "android",
+      "runArguments": ["--dev-client"]
+    },
+    {
+      "name": "Expo Web",
+      "type": "reactnative",
+      "request": "launch",
+      "platform": "web",
+      "runArguments": ["--web"]
+    }
+  ]
+}
