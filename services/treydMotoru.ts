@@ -405,6 +405,7 @@ const calculateKirilimAni = (
   daily: ReturnType<typeof analyzeDailySetup>,
   chart: Awaited<ReturnType<typeof fetchChartData>>,
   lastCompletedIdx: number,
+  intradayResistanceBreakout = false,
 ): KirilimAniAnalysis => {
   const empty: KirilimAniAnalysis = {
     kirilimAniSkoru: 0,
@@ -417,17 +418,21 @@ const calculateKirilimAni = (
   let score = 0;
   let detected = false;
 
-  // 1) Direnç kırılımı (resistanceBreakout) — zaten analyzeDailySetup tarafından hesaplanmış
-  if (daily.resistanceBreakout) {
+  // 1) Direnç kırılımı — dünkü kapanışta VEYA gün içi canlı fiyatla
+  // VAKBN senaryosu: sabah 10:00'da +6% ve direnç üstünde → tam kırılım puanı verilmeli
+  const unifiedBreakout = daily.resistanceBreakout || intradayResistanceBreakout;
+  if (unifiedBreakout) {
     score += 40;
     detected = true;
     reasons.push(
-      `✓ Direnç kırılımı (₺${Number.isFinite(daily.resistance) ? daily.resistance.toFixed(2) : "?"})`,
+      intradayResistanceBreakout
+        ? `✓ Gün içi direnç kırılımı (₺${Number.isFinite(daily.resistance) ? daily.resistance.toFixed(2) : "?"} aşıldı, kapanış teyidi bekleniyor)`
+        : `✓ Direnç kırılımı (₺${Number.isFinite(daily.resistance) ? daily.resistance.toFixed(2) : "?"})`,
     );
   }
 
   // 2) Fiyat direncin üzerinde ama henüz kırılım teyidi yok → yakın kırılım bonusu
-  if (!daily.resistanceBreakout && Number.isFinite(daily.resistance) && candidate.fiyat > daily.resistance) {
+  if (!unifiedBreakout && Number.isFinite(daily.resistance) && candidate.fiyat > daily.resistance) {
     score += 15;
     detected = true;
     reasons.push(
@@ -504,6 +509,7 @@ const calculateEarlyMovement = (
   daily: ReturnType<typeof analyzeDailySetup>,
   context: EarlyMovementContext,
   lastCompletedIdx: number,
+  intradayResistanceBreakout = false,
 ): Pick<
   TreydSinyali,
   | "erkenHareketSkoru"
@@ -590,7 +596,7 @@ const calculateEarlyMovement = (
     Number.isFinite(daily.resistance) && daily.resistance > 0
       ? ((daily.resistance - candidate.fiyat) / candidate.fiyat) * 100
       : NaN;
-  const resistanceScore = daily.resistanceBreakout
+  const resistanceScore = (daily.resistanceBreakout || intradayResistanceBreakout)
     ? 15
     : Number.isFinite(resistanceDistance) && resistanceDistance < 0
       ? 12
@@ -728,6 +734,7 @@ const buildDecisionSupport = (
   earlyMovement: Pick<TreydSinyali, "erkenHareketSkoru" | "piyasaHavasi">,
   opening: ReturnType<typeof analyzeOpeningBehavior>,
   teyitSayisi: number,
+  intradayResistanceBreakout = false,
 ): KararDestegi => {
   const dailyConfirmed = teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED;
   const rapidMove =
@@ -760,8 +767,13 @@ const buildDecisionSupport = (
     nedenler.push(
       `Hacim normalin ${daily.relativeVolume.toFixed(2)} katı seviyesinde`,
     );
-  if (daily.resistanceBreakout)
-    nedenler.push("Fiyat direnç üzerinde kapanış yaptı");
+  const unifiedResistanceBreakout = daily.resistanceBreakout || intradayResistanceBreakout;
+  if (unifiedResistanceBreakout)
+    nedenler.push(
+      intradayResistanceBreakout
+        ? "Fiyat gün içinde direnç seviyesini aştı (kapanış teyidi bekleniyor)"
+        : "Fiyat direnç üzerinde kapanış yaptı",
+    );
   if (marketRelative >= 1.5)
     nedenler.push("Genel piyasaya göre daha güçlü hareket ediyor");
   if (sectorRelative >= 1.5)
@@ -776,8 +788,10 @@ const buildDecisionSupport = (
     riskler.push(
       "Hareket hızlı; fiyatı sonradan kovalamak geri çekilme riski taşır",
     );
-  if (!daily.resistanceBreakout)
+  if (!unifiedResistanceBreakout)
     riskler.push("Direnç üzerinde kalıcılık henüz doğrulanmadı");
+  else if (intradayResistanceBreakout)
+    riskler.push("Gün içi direnç kırılımı henüz kapanışla teyit edilmedi");
   if (!daily.volumeConfirmed)
     riskler.push("Hacim günlük trend için henüz tam teyit vermiyor");
   if (earlyMovement.piyasaHavasi === "Piyasa desteği zayıf")
@@ -789,8 +803,10 @@ const buildDecisionSupport = (
 
   const sonrakiAdim = dailyConfirmed
     ? "Bir sonraki kapanışta trendin ve hacmin korunup korunmadığını kontrol edin."
-    : daily.resistanceBreakout
-      ? "Yeni kapanışta direnç üzerindeki kalıcılığı ve hacmin devamını kontrol edin."
+    : unifiedResistanceBreakout
+      ? intradayResistanceBreakout
+        ? "Kapanışta direnç üzerindeki kalıcılığı teyit edin; gün içi kırılım sonrası geri çekilme riskine dikkat."
+        : "Yeni kapanışta direnç üzerindeki kalıcılığı ve hacmin devamını kontrol edin."
       : "Kapanışta teyit sayısını, direnç seviyesini ve hacmin devamını kontrol edin.";
 
   return {
@@ -826,6 +842,20 @@ const confirmCandidate = async (
       chart.lows,
       chart.volumes,
     );
+
+    // ─── Intraday direnç kırılımı ───
+    // daily.resistanceBreakout dünün kapanışına bakar; ama piyasa açıkken fiyat direnci
+    // aşmış olabilir. VAKBN saat 10:00'da +6% ve direnç üstünde olsa bile resistanceBreakout=false
+    // döner. Bu yüzden canlı fiyatla ikinci bir kırılım testi yapıyoruz.
+    const intradayResistanceBreakout =
+      !daily.resistanceBreakout &&
+      Number.isFinite(daily.resistance) &&
+      daily.resistance > 0 &&
+      candidate.fiyat > daily.resistance * 1.003 &&
+      candidate.degisimYuzde > 0.5;
+    // Birleşik kırılım: dünkü kapanışta VEYA bugünkü canlı fiyatta kırılım var mı?
+    const unifiedResistanceBreakout = daily.resistanceBreakout || intradayResistanceBreakout;
+
     const lastCompletedIdx =
       chart.closes.length >= 2
         ? chart.closes.length - 2
@@ -858,7 +888,7 @@ const confirmCandidate = async (
       Number.isFinite(blendedRVOL) && blendedRVOL >= 1.2;
     const confirmations = [
       trendConfirmed,
-      daily.resistanceBreakout,
+      unifiedResistanceBreakout,
       volumeConfirmedBlended,
       daily.rsiFavorable,
       daily.structureConfirmed,
@@ -877,9 +907,11 @@ const confirmCandidate = async (
     addSetupReason(
       teyitler,
       Number.isFinite(daily.resistance)
-        ? `Direnç kırılımı (₺${daily.resistance.toFixed(2)})`
+        ? intradayResistanceBreakout
+          ? `Direnç kırılımı — gün içi (₺${daily.resistance.toFixed(2)} aşıldı, kapanış teyidi bekleniyor)`
+          : `Direnç kırılımı (₺${daily.resistance.toFixed(2)})`
         : "Direnç seviyesi hesaplanamadı",
-      daily.resistanceBreakout,
+      unifiedResistanceBreakout,
     );
     addSetupReason(
       teyitler,
@@ -915,7 +947,7 @@ const confirmCandidate = async (
     const strongBuy =
       candidate.degisimYuzde >= 0.75 &&
       trendConfirmed &&
-      daily.resistanceBreakout &&
+      unifiedResistanceBreakout &&
       volumeConfirmedBlended &&
       daily.rsiFavorable &&
       daily.structureConfirmed &&
@@ -928,14 +960,15 @@ const confirmCandidate = async (
       daily,
       chart,
       lastCompletedIdx,
+      intradayResistanceBreakout,
     );
     const momentumBreakout =
       (daily.dailyTrend !== "down" &&
         teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED &&
-        (daily.resistanceBreakout || daily.structureConfirmed)) ||
+        (unifiedResistanceBreakout || daily.structureConfirmed)) ||
       (kirilimAni.kirilimSaptandi &&
         teyitSayisi >= 4 &&
-        (daily.resistanceBreakout || daily.earlyUptrend));
+        (unifiedResistanceBreakout || daily.earlyUptrend));
     const etiket: TreydEtiketi = strongBuy
       ? "GÜÇLÜ ALIM"
       : momentumBreakout
@@ -958,6 +991,7 @@ const confirmCandidate = async (
       daily,
       context,
       lastCompletedIdx,
+      intradayResistanceBreakout,
     );
     const cekirge = calculateCekirge(chart, daily, lastCompletedIdx);
     const opening = analyzeOpeningBehavior(chart.opens, chart.closes, 50);
@@ -968,6 +1002,7 @@ const confirmCandidate = async (
       earlyMovement,
       opening,
       teyitSayisi,
+      intradayResistanceBreakout,
     );
 
     // ─── Birleşik genel puan (0-100) ───
@@ -1013,13 +1048,13 @@ const confirmCandidate = async (
       skor:
         candidate.skor +
         teyitSayisi * 0.2 +
-        (daily.resistanceBreakout ? 0.2 : 0) +
+        (unifiedResistanceBreakout ? 0.2 : 0) +
         (BIST30_SET.has(candidate.sembol) ? 0.15 : 0),
       etiket,
       trendTeyitli: trendConfirmed,
       gunlukTrend: daily.dailyTrend,
       direnc: daily.resistance,
-      direncKirildi: daily.resistanceBreakout,
+      direncKirildi: unifiedResistanceBreakout,
       hacimTeyitli: volumeConfirmedBlended,
       rsiValue: daily.rsiValue,
       rsiUygun: daily.rsiFavorable,
