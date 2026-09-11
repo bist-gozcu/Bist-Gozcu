@@ -13,7 +13,8 @@ export type DemoSignalType =
   | "erken_hareket"
   | "gun_ici_izleme"
   | "gunluk_teyitli"
-  | "cekirge_adayi";
+  | "cekirge_adayi"
+  | "kirilim_ani";
 
 export type DemoSignalInput = {
   symbol: string;
@@ -138,6 +139,7 @@ const usableSignal = (signal: DemoSignalInput): boolean =>
   Number.isFinite(signal.price) &&
   signal.price > 0 &&
   (signal.signalType === "gunluk_teyitli" ||
+    signal.signalType === "kirilim_ani" ||
     (signal.signalType === "erken_hareket" && signal.score >= 50));
 
 const observeMorningWaves = (
@@ -339,6 +341,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             signal.dailyTrend !== "down" &&
             (signal.signalType === "gunluk_teyitli" ||
               signal.signalType === "cekirge_adayi" ||
+              signal.signalType === "kirilim_ani" ||
               signal.score >= 50),
         )
         .slice(0, 6)
@@ -354,7 +357,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           reason:
             signal.signalType === "gunluk_teyitli"
               ? `${signal.confirmations}/6 teyit ve kapanışta aşağı yön yok`
-              : `Erken hareket skoru ${signal.score.toFixed(0)} ve yön aşağı değil`,
+              : signal.signalType === "kirilim_ani"
+                ? `Kırılım anı skoru ${signal.score.toFixed(0)} ve hacim/momentum teyitli`
+                : `Erken hareket skoru ${signal.score.toFixed(0)} ve yön aşağı değil`,
         }));
       const waveTests = signals
         .filter(
@@ -410,7 +415,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           !signal ||
           signal.dailyTrend === "down" ||
           (position.signalType === "gunluk_teyitli" &&
-            signal.confirmations < 5);
+            signal.confirmations < 5) ||
+          (position.signalType === "kirilim_ani" &&
+            signal.confirmations < 3);
         if (shouldClose) {
           next = closeInAccount(
             next,

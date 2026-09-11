@@ -100,9 +100,15 @@ export type TreydSinyali = {
   cekirgeRiski: string;
   /** Ekranda Çekirge Adayı olarak gösterilip gösterilmeyeceği. */
   cekirgeUygun: boolean;
-  /** Tek çatı altında birleşik genel puan (0-100). Teyit, erken hareket ve çekirge puanlarının ağırlıklı ortalamasıdır. */
+  /** Tek çatı altında birleşik genel puan (0-100). Teyit, erken hareket ve kırılım anı puanlarının ağırlıklı ortalamasıdır. */
   genelPuan: number;
-  /** Kısa durum etiketi (Teyitli / İzlemede / Erken / Çekirge). */
+  /** Kırılım Anı puanı (0-100): fiyat direnci yeni aşmış veya ATR-üstü intraday momentum varsa ateşlenir. */
+  kirilimAniSkoru: number;
+  /** Kırılım anı puanının nedenleri. */
+  kirilimAniNedenleri: string[];
+  /** Kırılım anı saptandı mı (genelPuan ağırlıklandırmasını değiştirir). */
+  kirilimSaptandi: boolean;
+  /** Kısa durum etiketi (Teyitli / İzlemede / Erken / Çekirge / Kırılım). */
   durumEtiketi: string;
 };
 
@@ -237,6 +243,9 @@ const getQuoteCandidate = (
     cekirgeNedenleri: ["Yatay yapı için yeterli veri yok"],
     cekirgeRiski: "Veri yetersiz; aday olarak değerlendirilmemeli.",
     cekirgeUygun: false,
+    kirilimAniSkoru: 0,
+    kirilimAniNedenleri: [],
+    kirilimSaptandi: false,
     genelPuan: 0,
     durumEtiketi: "İzlemede",
   };
@@ -383,6 +392,101 @@ const calculateCekirge = (
   };
 };
 
+// ─── Kırılım Anı Skoru (Breakout Moment Score) ───
+// Fiyat direnci yeni aşmışsa VEYA intraday değişim ATR%’nin 1.5 katını geçmişse ateşlenir.
+// Trade Ideas Holly AI, Danelfin, Borsamix benzeri: kırılım anını ayrı bir sinyal olarak yakala.
+type KirilimAniAnalysis = Pick<
+  TreydSinyali,
+  "kirilimAniSkoru" | "kirilimAniNedenleri" | "kirilimSaptandi"
+>;
+
+const calculateKirilimAni = (
+  candidate: TreydSinyali,
+  daily: ReturnType<typeof analyzeDailySetup>,
+  chart: Awaited<ReturnType<typeof fetchChartData>>,
+  lastCompletedIdx: number,
+): KirilimAniAnalysis => {
+  const empty: KirilimAniAnalysis = {
+    kirilimAniSkoru: 0,
+    kirilimAniNedenleri: ["— Kırılım anı saptanmadı"],
+    kirilimSaptandi: false,
+  };
+  if (!chart || lastCompletedIdx < 21) return empty;
+
+  const reasons: string[] = [];
+  let score = 0;
+  let detected = false;
+
+  // 1) Direnç kırılımı (resistanceBreakout) — zaten analyzeDailySetup tarafından hesaplanmış
+  if (daily.resistanceBreakout) {
+    score += 40;
+    detected = true;
+    reasons.push(
+      `✓ Direnç kırılımı (₺${Number.isFinite(daily.resistance) ? daily.resistance.toFixed(2) : "?"})`,
+    );
+  }
+
+  // 2) Fiyat direncin üzerinde ama henüz kırılım teyidi yok → yakın kırılım bonusu
+  if (!daily.resistanceBreakout && Number.isFinite(daily.resistance) && candidate.fiyat > daily.resistance) {
+    score += 15;
+    detected = true;
+    reasons.push(
+      `≈ Fiyat direnç üstünde (₺${daily.resistance.toFixed(2)}), kapanış teyidi bekleniyor`,
+    );
+  }
+
+  // 3) Intraday momentum: bugünkü degisimYuzde, ATR%’nin 1.5 katını geçmiş
+  const atrValue = atr(chart.highs, chart.lows, chart.closes, 14)[lastCompletedIdx];
+  const atrPercent =
+    Number.isFinite(atrValue) && atrValue > 0 && candidate.fiyat > 0
+      ? (atrValue / candidate.fiyat) * 100
+      : NaN;
+  const intradayMomentum =
+    Number.isFinite(atrPercent) && candidate.degisimYuzde >= atrPercent * 1.5;
+  if (intradayMomentum) {
+    score += 25;
+    detected = true;
+    reasons.push(
+      `✓ Gün içi momentum: %${candidate.degisimYuzde.toFixed(2)} ≥ ATR%${atrPercent.toFixed(2)} × 1.5`,
+    );
+  }
+
+  // 4) Erken yükseliş trendi (earlyUptrend) — MA çaprazı henüz oluşmamış ama momentum var
+  if (daily.earlyUptrend) {
+    score += 15;
+    detected = true;
+    reasons.push("✓ Erken yükseliş trendi (EMA20+%2 ve 5 gün momentum pozitif)");
+  }
+
+  // 5) OBV ters dönüş (obvReversal) — uzun vadeli OBV aşağı → kısa vadeli yukarı dönmüş
+  if (daily.obvReversal) {
+    score += 10;
+    detected = true;
+    reasons.push("✓ OBV ters dönüş (2 günlük yukarı, 20 günlük bazisten)");
+  }
+
+  // 6) Intraday hacim patlaması — Borsamix benzeri: 3× ortalamadan fazla
+  const blendedRVOL = Math.max(
+    Number.isFinite(daily.relativeVolume) ? daily.relativeVolume : 0,
+    Number.isFinite(candidate.goreceliHacim) ? candidate.goreceliHacim : 0,
+  );
+  if (blendedRVOL >= 2.5) {
+    score += 10;
+    detected = true;
+    reasons.push(`✓ Hacim patlaması (RVOL ${blendedRVOL.toFixed(2)}x)`);
+  }
+
+  if (!detected) {
+    reasons.unshift("— Kırılım anı saptanmadı");
+  }
+
+  return {
+    kirilimAniSkoru: clamp(score, 0, 100),
+    kirilimAniNedenleri: reasons.length > 0 ? reasons : ["— Kırılım anı saptanmadı"],
+    kirilimSaptandi: detected,
+  };
+};
+
 const addSetupReason = (
   reasons: string[],
   label: string,
@@ -438,8 +542,12 @@ const calculateEarlyMovement = (
     Number.isFinite(atrValue) && atrValue > 0
       ? (atrValue / completedClose) * 100
       : NaN;
+  // ─── Impulse hesabı: intraday degisimYuzde 2× ağırlıklı ───
+  // VAKBN tipi kırılımlarda gün içi %6+ değişim en güçlü sinyal — tamamlanmış bar'dan önce hesaba katılmalı
+  const intradayWeighted =
+    Number.isFinite(candidate.degisimYuzde) ? candidate.degisimYuzde * 2 : 0;
   const impulseValues = [
-    candidate.degisimYuzde,
+    intradayWeighted,
     completedDayChange,
     fiveDayChange / 2,
   ].filter((value) => Number.isFinite(value));
@@ -731,17 +839,27 @@ const confirmCandidate = async (
       Number.isFinite(previousMacdHistogram) &&
       macdHistogram > 0 &&
       macdHistogram >= previousMacdHistogram;
-    const trendConfirmed = daily.dailyTrend === "up";
+    const trendConfirmed = daily.dailyTrend === "up" || daily.earlyUptrend;
     const ema20Confirmed =
       Number.isFinite(daily.ema20) &&
       Number.isFinite(daily.resistance) &&
       chart.closes[lastCompletedIdx] > daily.ema20;
+    // OBV: klasik teyit VEYA OBV ters dönüş (obvReversal) — kırılım öncesi sinyal
     const obvConfirmed =
-      daily.obvDirection === "up" && daily.obvAlignedWithPrice;
+      (daily.obvDirection === "up" && daily.obvAlignedWithPrice) ||
+      daily.obvReversal;
+    // ─── Hacim: intraday RVOL ile günlük RVOL karışımı ───
+    // Borsamix benzeri: gerçek zamanlı hacmi teyite dahil et
+    const blendedRVOL = Math.max(
+      Number.isFinite(daily.relativeVolume) ? daily.relativeVolume : 0,
+      Number.isFinite(candidate.goreceliHacim) ? candidate.goreceliHacim : 0,
+    );
+    const volumeConfirmedBlended =
+      Number.isFinite(blendedRVOL) && blendedRVOL >= 1.2;
     const confirmations = [
       trendConfirmed,
       daily.resistanceBreakout,
-      daily.volumeConfirmed,
+      volumeConfirmedBlended,
       daily.rsiFavorable,
       daily.structureConfirmed,
       macdConfirmed,
@@ -751,7 +869,9 @@ const confirmCandidate = async (
 
     addSetupReason(
       teyitler,
-      `Günlük trend yükseliş (${daily.dailyTrend})`,
+      daily.earlyUptrend
+        ? `Erken yükseliş trendi (EMA20+%2, 5 gün pozitif)`
+        : `Günlük trend yükseliş (${daily.dailyTrend})`,
       trendConfirmed,
     );
     addSetupReason(
@@ -763,10 +883,10 @@ const confirmCandidate = async (
     );
     addSetupReason(
       teyitler,
-      Number.isFinite(daily.relativeVolume)
-        ? `Hacim teyidi (RVOL ${daily.relativeVolume.toFixed(2)}x)`
+      Number.isFinite(blendedRVOL)
+        ? `Hacim teyidi (RVOL ${blendedRVOL.toFixed(2)}x, gün içi+kapanış)`
         : "Hacim teyidi hesaplanamadı",
-      daily.volumeConfirmed,
+      volumeConfirmedBlended,
     );
     addSetupReason(
       teyitler,
@@ -789,23 +909,33 @@ const confirmCandidate = async (
       `${ema20Confirmed ? "✓" : "—"} Kısa vadeli EMA 20: ${ema20Confirmed ? "fiyat üzerinde" : "teyit yok"}`,
     );
     teyitler.push(
-      `${obvConfirmed ? "✓" : "—"} OBV: ${obvConfirmed ? "fiyatla uyumlu yükseliyor" : "ek hacim teyidi yok"}`,
+      `${obvConfirmed ? "✓" : "—"} OBV: ${obvConfirmed ? (daily.obvReversal ? "ters dönüş saptandı" : "fiyatla uyumlu yükseliyor") : "ek hacim teyidi yok"}`,
     );
 
     const strongBuy =
       candidate.degisimYuzde >= 0.75 &&
       trendConfirmed &&
       daily.resistanceBreakout &&
-      daily.volumeConfirmed &&
+      volumeConfirmedBlended &&
       daily.rsiFavorable &&
       daily.structureConfirmed &&
       macdConfirmed;
     // Günlük yüzde yükselişi tek başına momentum kabul etmiyoruz.
     // Momentum etiketi için en az 5/6 teyit ve kırılım/yapı şartı gerekir.
+    // Kırılım anı saptanmışsa momentum kriterlerini gevşet (en az 4/6 + kırılım)
+    const kirilimAni = calculateKirilimAni(
+      candidate,
+      daily,
+      chart,
+      lastCompletedIdx,
+    );
     const momentumBreakout =
-      daily.dailyTrend !== "down" &&
-      teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED &&
-      (daily.resistanceBreakout || daily.structureConfirmed);
+      (daily.dailyTrend !== "down" &&
+        teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED &&
+        (daily.resistanceBreakout || daily.structureConfirmed)) ||
+      (kirilimAni.kirilimSaptandi &&
+        teyitSayisi >= 4 &&
+        (daily.resistanceBreakout || daily.earlyUptrend));
     const etiket: TreydEtiketi = strongBuy
       ? "GÜÇLÜ ALIM"
       : momentumBreakout
@@ -841,25 +971,38 @@ const confirmCandidate = async (
     );
 
     // ─── Birleşik genel puan (0-100) ───
-    // Teyit ağırlığı en yüksek, erken hareket orta, çekirge en düşük
+    // Kırılım anı saptandıysa: teyit %35 + erken hareket %40 + kırılım anı %25 (çekirge sıfırlanır)
+    // Kırılım yoksa:           teyit %45 + erken hareket %40 + çekirge %15
     const teyitPuan = clamp((teyitSayisi / TOTAL_CONFIRMATIONS) * 100, 0, 100);
-    const genelPuan = clamp(
-      Math.round(
-        teyitPuan * 0.50 +
-        earlyMovement.erkenHareketSkoru * 0.35 +
-        cekirge.cekirgeSkoru * 0.15,
-      ),
-      0,
-      100,
-    );
+    const genelPuan = kirilimAni.kirilimSaptandi
+      ? clamp(
+          Math.round(
+            teyitPuan * 0.35 +
+            earlyMovement.erkenHareketSkoru * 0.40 +
+            kirilimAni.kirilimAniSkoru * 0.25,
+          ),
+          0,
+          100,
+        )
+      : clamp(
+          Math.round(
+            teyitPuan * 0.45 +
+            earlyMovement.erkenHareketSkoru * 0.40 +
+            cekirge.cekirgeSkoru * 0.15,
+          ),
+          0,
+          100,
+        );
     const durumEtiketi =
-      radarDurumu === "gunluk_teyitli"
-        ? "Teyitli"
-        : earlyMovement.erkenHareketSkoru >= 50
-          ? "Erken"
-          : cekirge.cekirgeUygun && cekirge.cekirgeSkoru >= CEKIRGE_MIN_SCORE
-            ? "Çekirge"
-            : "İzlemede";
+      kirilimAni.kirilimSaptandi && genelPuan >= 55
+        ? "Kırılım"
+        : radarDurumu === "gunluk_teyitli"
+          ? "Teyitli"
+          : earlyMovement.erkenHareketSkoru >= 50
+            ? "Erken"
+            : cekirge.cekirgeUygun && cekirge.cekirgeSkoru >= CEKIRGE_MIN_SCORE
+              ? "Çekirge"
+              : "İzlemede";
 
     return {
       ...candidate,
@@ -877,7 +1020,7 @@ const confirmCandidate = async (
       gunlukTrend: daily.dailyTrend,
       direnc: daily.resistance,
       direncKirildi: daily.resistanceBreakout,
-      hacimTeyitli: daily.volumeConfirmed,
+      hacimTeyitli: volumeConfirmedBlended,
       rsiValue: daily.rsiValue,
       rsiUygun: daily.rsiFavorable,
       yuksekDip: daily.higherLow,
@@ -888,6 +1031,7 @@ const confirmCandidate = async (
       teyitler,
       ...earlyMovement,
       ...cekirge,
+      ...kirilimAni,
       kararDestegi,
       genelPuan,
       durumEtiketi,
@@ -902,6 +1046,9 @@ const confirmCandidate = async (
       cekirgeNedenleri: ["Yatay yapı verisi alınamadı"],
       cekirgeRiski: "Tarihsel veri alınamadı; aday olarak değerlendirilmemeli.",
       cekirgeUygun: false,
+      kirilimAniSkoru: 0,
+      kirilimAniNedenleri: ["— Kırılım anı verisi alınamadı"],
+      kirilimSaptandi: false,
       genelPuan: 0,
       durumEtiketi: "İzlemede",
     };

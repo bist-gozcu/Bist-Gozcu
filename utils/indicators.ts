@@ -66,7 +66,7 @@ export function analyzeObv(
   closes: number[],
   volumes: number[],
   period = 5,
-): { direction: ObvDirection; alignedWithPrice: boolean; obvValue: number } {
+): { direction: ObvDirection; alignedWithPrice: boolean; obvValue: number; obvReversal: boolean } {
   const series = obv(closes, volumes);
   const last = series.length - 1;
   const previous = Math.max(0, last - period);
@@ -84,7 +84,23 @@ export function analyzeObv(
   const alignedWithPrice =
     (closeChange >= 0 && obvChange >= 0) ||
     (closeChange <= 0 && obvChange <= 0);
-  return { direction, alignedWithPrice, obvValue };
+
+  // ─── OBV Reversal: kısa vadeli (2 gün) yön, uzun vadeli (20 gün) bazisten tersiyorsa ───
+  // Fiyat son 1-2 günde yukarı dönmüş ve OBV de dönmeye başlamış → kırılım öncesi sinyal
+  const longBaseline = Math.max(0, last - 20);
+  const obvLongChange =
+    Number.isFinite(obvValue) && Number.isFinite(series[longBaseline])
+      ? obvValue - series[longBaseline]
+      : 0;
+  const shortLookback = Math.max(0, last - 2);
+  const obvShortChange =
+    Number.isFinite(obvValue) && Number.isFinite(series[shortLookback])
+      ? obvValue - series[shortLookback]
+      : 0;
+  const obvReversal =
+    obvLongChange <= 0 && obvShortChange > 0 && closeChange >= 0;
+
+  return { direction, alignedWithPrice, obvValue, obvReversal };
 }
 
 export interface MACDResult {
@@ -521,10 +537,14 @@ export type DailyTrendDirection = "up" | "sideways" | "down";
 
 export interface DailySetupAnalysis {
   dailyTrend: DailyTrendDirection;
+  /** Fiyat > EMA20+%2 ve 5 günlük değişim >0 ise erken yükseliş trendi. */
+  earlyUptrend: boolean;
   ema20: number;
   ema20AboveSma50: boolean;
   obvDirection: ObvDirection;
   obvAlignedWithPrice: boolean;
+  /** OBV uzun vadeli bazisten (20 gün) aşağı → kısa vadeli (2 gün) yukarı dönmüş. */
+  obvReversal: boolean;
   resistance: number;
   resistanceBreakout: boolean;
   relativeVolume: number;
@@ -555,10 +575,12 @@ export function analyzeDailySetup(
 ): DailySetupAnalysis {
   const empty: DailySetupAnalysis = {
     dailyTrend: "sideways",
+    earlyUptrend: false,
     ema20: NaN,
     ema20AboveSma50: false,
     obvDirection: "flat",
     obvAlignedWithPrice: false,
+    obvReversal: false,
     resistance: NaN,
     resistanceBreakout: false,
     relativeVolume: NaN,
@@ -595,6 +617,22 @@ export function analyzeDailySetup(
           ? "down"
           : "sideways"
       : "sideways";
+
+  // ─── Erken Yükseliş Trendi (Early Uptrend) ───
+  // MA20>MA50 çaprazı henüz oluşmamış olabilir ama fiyat EMA20’nin üstünde ve momentum var.
+  // VAKBN tipi kırılımlarda: fiyat EMA20+%2+ ve 5 günlük değişim >0 → earlyUptrend
+  const fiveDayIdx = Math.max(0, last - 5);
+  const fiveDayChange =
+    closes[fiveDayIdx] > 0
+      ? ((lastClose - closes[fiveDayIdx]) / closes[fiveDayIdx]) * 100
+      : NaN;
+  const earlyUptrend =
+    dailyTrend !== "up" &&
+    Number.isFinite(ema20) &&
+    ema20 > 0 &&
+    lastClose > ema20 * 1.02 &&
+    Number.isFinite(fiveDayChange) &&
+    fiveDayChange > 0;
 
   const resistanceStart = Math.max(0, last - 20);
   const resistanceValues = highs
@@ -663,10 +701,12 @@ export function analyzeDailySetup(
 
   return {
     dailyTrend,
+    earlyUptrend,
     ema20,
     ema20AboveSma50: Number.isFinite(ema20) && Number.isFinite(ma50) && ema20 > ma50,
     obvDirection: obvAnalysis.direction,
     obvAlignedWithPrice: obvAnalysis.alignedWithPrice,
+    obvReversal: obvAnalysis.obvReversal,
     resistance,
     resistanceBreakout,
     relativeVolume,

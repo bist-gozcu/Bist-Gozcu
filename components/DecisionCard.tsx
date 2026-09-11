@@ -40,6 +40,10 @@ interface DecisionCardProps {
   cekirgeSkoru?: number;
   cekirgeNedenleri?: string[];
   cekirgeRiski?: string;
+  /* Kırılım Anı — yeni alanlar */
+  kirilimAniSkoru?: number;
+  kirilimAniNedenleri?: string[];
+  kirilimSaptandi?: boolean;
 }
 
 function SignalChip({
@@ -103,6 +107,9 @@ export default function DecisionCard({
   cekirgeSkoru = 0,
   cekirgeNedenleri = [],
   cekirgeRiski = "Orta",
+  kirilimAniSkoru = 0,
+  kirilimAniNedenleri = [],
+  kirilimSaptandi = false,
 }: DecisionCardProps) {
   const colors = useColors();
   const hasProximityBar =
@@ -151,11 +158,13 @@ export default function DecisionCard({
   const durumColor =
     durumEtiketi === "Teyitli"
       ? colors.up
-      : durumEtiketi === "Erken"
-        ? colors.primary
-        : durumEtiketi === "Çekirge"
-          ? colors.neutral
-          : colors.mutedForeground;
+      : durumEtiketi === "Kırılım"
+        ? colors.up            // Kırılım = yükseliş sinyali, yeşil
+        : durumEtiketi === "Erken"
+          ? colors.primary
+          : durumEtiketi === "Çekirge"
+            ? colors.neutral
+            : colors.mutedForeground;
 
   const dailyChange = Number.isFinite(gunlukDegisim)
     ? (gunlukDegisim as number)
@@ -209,7 +218,7 @@ export default function DecisionCard({
       </View>
 
       {/* Çekirge inline info — only when applicable */}
-      {cekirgeUygun && cekirgeSkoru >= 35 && (
+      {cekirgeUygun && cekirgeSkoru >= 35 && !kirilimSaptandi && (
         <View style={styles.cekirgeRow}>
           <Text style={[styles.cekirgeLabel, { color: colors.neutral }]}>
             Çekirge {cekirgeSkoru}/100 · {cekirgeRiski} risk
@@ -220,6 +229,23 @@ export default function DecisionCard({
               numberOfLines={1}
             >
               {cekirgeNedenleri.slice(0, 2).join(" · ")}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Kırılım Anı — only when detected */}
+      {kirilimSaptandi && kirilimAniSkoru > 0 && (
+        <View style={styles.cekirgeRow}>
+          <Text style={[styles.cekirgeLabel, { color: colors.up }]}>
+            Kırılım Anı {kirilimAniSkoru}/100
+          </Text>
+          {kirilimAniNedenleri.length > 0 && (
+            <Text
+              style={[styles.cekirgeNeden, { color: colors.mutedForeground }]}
+              numberOfLines={1}
+            >
+              {kirilimAniNedenleri.slice(0, 2).join(" · ")}
             </Text>
           )}
         </View>

@@ -56,9 +56,11 @@ export default function TreydScreen() {
               signalType:
                 item.durumEtiketi === "Teyitli"
                   ? ("gunluk_teyitli" as const)
-                  : item.durumEtiketi === "Çekirge"
-                    ? ("cekirge_adayi" as const)
-                    : ("erken_hareket" as const),
+                  : item.durumEtiketi === "Kırılım"
+                    ? ("kirilim_ani" as const)
+                    : item.durumEtiketi === "Çekirge"
+                      ? ("cekirge_adayi" as const)
+                      : ("erken_hareket" as const),
               score: item.genelPuan,
               confirmations: item.teyitSayisi,
               dailyTrend: item.gunlukTrend,
@@ -151,7 +153,9 @@ export default function TreydScreen() {
         signalType:
           item.durumEtiketi === "Teyitli"
             ? ("gunluk_teyitli" as const)
-            : ("erken_hareket" as const),
+            : item.durumEtiketi === "Kırılım"
+              ? ("kirilim_ani" as const)
+              : ("erken_hareket" as const),
         score: item.genelPuan,
         confirmations: item.teyitSayisi,
         dailyTrend: item.gunlukTrend,
@@ -390,6 +394,9 @@ export default function TreydScreen() {
                 cekirgeSkoru={item.cekirgeSkoru}
                 cekirgeNedenleri={item.cekirgeNedenleri}
                 cekirgeRiski={item.cekirgeRiski}
+                kirilimAniSkoru={item.kirilimAniSkoru}
+                kirilimAniNedenleri={item.kirilimAniNedenleri}
+                kirilimSaptandi={item.kirilimSaptandi}
               />
             </View>
           </View>
