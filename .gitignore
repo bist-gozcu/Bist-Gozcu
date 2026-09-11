@@ -47,3 +47,4 @@ static-build/
 
 # EAS
 .eas/
+.github/

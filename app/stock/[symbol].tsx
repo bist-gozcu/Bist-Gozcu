@@ -726,6 +726,7 @@ export default function StockDetailScreen() {
             range={range}
             chartType={chartType}
             overlays={visibleChartOverlays}
+            previousClose={quote?.regularMarketPreviousClose}
           />
         ) : (
           <View style={styles.chartLoader}>
@@ -1609,6 +1610,7 @@ export default function StockDetailScreen() {
                 chartType={chartType}
                 overlays={visibleChartOverlays}
                 height={420}
+                previousClose={quote?.regularMarketPreviousClose}
               />
             ) : (
               <Text style={{ color: colors.mutedForeground }}>
