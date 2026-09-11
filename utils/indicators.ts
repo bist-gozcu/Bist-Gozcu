@@ -208,6 +208,81 @@ export function rsi(prices: number[], period = 14): number[] {
   return result;
 }
 
+/* ─── Bollinger Bantları ─── */
+export interface BollingerBandsResult {
+  upper: number[];
+  middle: number[];
+  lower: number[];
+  bandwidth: number[];
+  percentB: number[];
+}
+
+export function bollingerBands(
+  closes: number[],
+  period = 20,
+  stdDevMultiplier = 2,
+): BollingerBandsResult {
+  const middle = sma(closes, period);
+  const upper: number[] = new Array(closes.length).fill(NaN);
+  const lower: number[] = new Array(closes.length).fill(NaN);
+  const bandwidth: number[] = new Array(closes.length).fill(NaN);
+  const percentB: number[] = new Array(closes.length).fill(NaN);
+
+  for (let i = period - 1; i < closes.length; i++) {
+    const slice = closes.slice(i - period + 1, i + 1);
+    const mean = middle[i];
+    if (isNaN(mean)) continue;
+    const variance =
+      slice.reduce((sum, val) => sum + (val - mean) ** 2, 0) / period;
+    const std = Math.sqrt(variance);
+    const upperBand = mean + stdDevMultiplier * std;
+    const lowerBand = mean - stdDevMultiplier * std;
+    upper[i] = upperBand;
+    lower[i] = lowerBand;
+    bandwidth[i] =
+      lowerBand > 0 ? ((upperBand - lowerBand) / mean) * 100 : NaN;
+    percentB[i] =
+      upperBand - lowerBand > 0
+        ? (closes[i] - lowerBand) / (upperBand - lowerBand)
+        : NaN;
+  }
+  return { upper, middle, lower, bandwidth, percentB };
+}
+
+/* ─── Stochastic Osilatör ─── */
+export interface StochasticResult {
+  k: number[]; // %K
+  d: number[]; // %D (3-periyot SMA of %K)
+}
+
+export function stochastic(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  kPeriod = 14,
+  dPeriod = 3,
+): StochasticResult {
+  const k: number[] = new Array(closes.length).fill(NaN);
+  for (let i = kPeriod - 1; i < closes.length; i++) {
+    const highSlice = highs.slice(i - kPeriod + 1, i + 1);
+    const lowSlice = lows.slice(i - kPeriod + 1, i + 1);
+    const highestHigh = Math.max(...highSlice.filter((v) => Number.isFinite(v)));
+    const lowestLow = Math.min(...lowSlice.filter((v) => Number.isFinite(v)));
+    const range = highestHigh - lowestLow;
+    k[i] = range > 0 ? ((closes[i] - lowestLow) / range) * 100 : 50;
+  }
+  const d = sma(k.filter((v) => !isNaN(v)), dPeriod);
+  const dResult: number[] = new Array(closes.length).fill(NaN);
+  let di = 0;
+  for (let i = 0; i < closes.length; i++) {
+    if (!isNaN(k[i])) {
+      dResult[i] = d[di] ?? NaN;
+      di++;
+    }
+  }
+  return { k, d: dResult };
+}
+
 /* ─── ATR (Average True Range) ─── */
 export function atr(
   highs: number[],

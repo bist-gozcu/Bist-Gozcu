@@ -670,6 +670,69 @@ export async function fetchCryptoQuotes(): Promise<QuoteData[]> {
   }
 }
 
+/** Yahoo v10 quoteSummary API’sinden temel finansal verileri çeker.
+ *  Mobil uygulamadan doğrudan Yahoo’ya istek atar; proxy gerekmez.
+ */
+export async function fetchFundamentals(
+  symbol: string,
+): Promise<StockFundamentals> {
+  const empty: StockFundamentals = {
+    trailingPE: null, forwardPE: null, priceToBook: null,
+    priceToSales: null, enterpriseToEbitda: null, bookValue: null,
+    returnOnEquity: null, profitMargins: null, revenueGrowth: null,
+    earningsGrowth: null, debtToEquity: null, dividendYield: null,
+    targetMeanPrice: null, recommendationMean: null, analystCount: null,
+    asOf: null,
+  };
+  const yahooSymbol = `${symbol.trim().toUpperCase().replace(/\.IS$/i, "")}.IS`;
+  const modules = "defaultKeyStatistics,financialData";
+  const url =
+    `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yahooSymbol)}?modules=${modules}`;
+  try {
+    const res = await fetchWithTimeout(url, { headers: YF_HEADERS }, 12_000);
+    if (!res.ok) {
+      logger.debug("yahooFinance", "quoteSummary HTTP", res.status);
+      return empty;
+    }
+    const payload = (await res.json()) as Record<string, unknown>;
+    const result = (payload as { quoteSummary?: { result?: Record<string, unknown>[] } })
+      .quoteSummary?.result?.[0];
+    if (!result) return empty;
+
+    const stats = (result as { defaultKeyStatistics?: Record<string, unknown> })
+      .defaultKeyStatistics ?? {};
+    const fin = (result as { financialData?: Record<string, unknown> })
+      .financialData ?? {};
+
+    const numField = (obj: Record<string, unknown>, key: string): number | null => {
+      const raw = (obj as Record<string, { raw?: number } | undefined>)[key]?.raw;
+      return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+    };
+
+    return {
+      trailingPE:         numField(stats, "trailingPE"),
+      forwardPE:           numField(stats, "forwardPE"),
+      priceToBook:         numField(stats, "priceToBook"),
+      priceToSales:        numField(stats, "priceToSales"),
+      enterpriseToEbitda:  numField(stats, "enterpriseToEbitda"),
+      bookValue:           numField(stats, "bookValue"),
+      returnOnEquity:      numField(fin,  "returnOnEquity"),
+      profitMargins:       numField(fin,  "profitMargins"),
+      revenueGrowth:       numField(fin,  "revenueGrowth"),
+      earningsGrowth:      numField(fin,  "earningsGrowth"),
+      debtToEquity:        numField(fin,  "debtToEquity"),
+      dividendYield:       numField(stats, "dividendYield"),
+      targetMeanPrice:     numField(fin,  "targetMeanPrice"),
+      recommendationMean:  numField(fin,  "recommendationMean"),
+      analystCount:        numField(stats, "analystCount") ?? numField(fin, "numberOfAnalystOpinions"),
+      asOf:                new Date().toISOString(),
+    };
+  } catch (e) {
+    logger.debug("yahooFinance", "quoteSummary fetch başarısız", e);
+    return empty;
+  }
+}
+
 export async function fetchStockOverview(
   symbol: string,
 ): Promise<StockOverview | null> {
@@ -694,6 +757,7 @@ export async function fetchStockOverview(
     asOf: null,
   };
 
+  // 1) Proxy’den overview dener; fundamentals dolu gelirse direkt döner.
   try {
     const url = `${proxyBase}/bist/stock/${encodeURIComponent(normalizedSymbol)}/overview`;
     const res = await fetchWithTimeout(url, undefined, PROXY_TIMEOUT_MS);
@@ -706,37 +770,50 @@ export async function fetchStockOverview(
             quoteResponse: { result: [payload.quote] },
           })[0]
         : undefined;
-      return {
-        symbol: String(payload.symbol ?? normalizedSymbol)
-          .replace(/\.IS$/i, "")
-          .toUpperCase(),
-        quote: normalizedQuote,
-        fundamentals: { ...emptyFundamentals, ...(payload.fundamentals ?? {}) },
-        news: Array.isArray(payload.news) ? payload.news : [],
-        source: String(payload.source ?? "BIST Gözcü proxy"),
-      };
+      const proxyFundamentals = { ...emptyFundamentals, ...(payload.fundamentals ?? {}) };
+      const hasRealFundamentals =
+        proxyFundamentals.trailingPE != null ||
+        proxyFundamentals.priceToBook != null ||
+        proxyFundamentals.returnOnEquity != null;
+      if (hasRealFundamentals) {
+        return {
+          symbol: String(payload.symbol ?? normalizedSymbol)
+            .replace(/\.IS$/i, "")
+            .toUpperCase(),
+          quote: normalizedQuote,
+          fundamentals: proxyFundamentals,
+          news: Array.isArray(payload.news) ? payload.news : [],
+          source: String(payload.source ?? "BIST Gözcü proxy"),
+        };
+      }
     }
   } catch (e) {
     logger.debug("yahooFinance", "Proxy stock overview başarısız, düşük maliyetli fallback deneniyor", e);
   }
 
-  try {
-    const [fallbackQuote, fallbackNews] = await Promise.all([
-      fetchSingleQuote(normalizedSymbol),
-      fetchMarketNews(normalizedSymbol, 3),
-    ]);
-    if (!fallbackQuote && fallbackNews.length === 0) return null;
-    return {
-      symbol: normalizedSymbol,
-      quote: fallbackQuote ?? undefined,
-      fundamentals: emptyFundamentals,
-      news: fallbackNews,
-      source: "Yahoo fiyat/haber fallback’i; temel oran verisi yok",
-    };
-  } catch (e) {
-    logger.warn("yahooFinance", "Stock overview fallback başarısız", e);
+  // 2) Proxy fundamentals boş → Yahoo v10 quoteSummary direkt çek
+  const [fallbackQuote, fallbackNews, yfFundamentals] = await Promise.all([
+    fetchSingleQuote(normalizedSymbol).catch(() => null),
+    fetchMarketNews(normalizedSymbol, 3).catch(() => []),
+    fetchFundamentals(normalizedSymbol),
+  ]);
+
+  if (!fallbackQuote && fallbackNews.length === 0 &&
+      yfFundamentals.trailingPE == null && yfFundamentals.priceToBook == null) {
     return null;
   }
+
+  return {
+    symbol: normalizedSymbol,
+    quote: fallbackQuote ?? undefined,
+    fundamentals: yfFundamentals.trailingPE != null
+      ? yfFundamentals
+      : emptyFundamentals,
+    news: fallbackNews,
+    source: yfFundamentals.trailingPE != null
+      ? "Yahoo quoteSummary"
+      : "Yahoo fiyat/haber fallback’i; temel oran verisi yok",
+  };
 }
 
 export async function fetchMarketNews(

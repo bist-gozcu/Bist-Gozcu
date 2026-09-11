@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -23,22 +24,31 @@ import { AlertType, useAlerts } from "@/contexts/AlertContext";
 import {
   fetchChartData,
   fetchSingleQuote,
+  fetchStockOverview,
+  fetchMarketNews,
   ChartResult,
   ChartRange,
   getMarketSession,
   QuoteData,
+  StockOverview,
+  StockFundamentals,
+  MarketNews,
 } from "@/utils/yahooFinance";
 import {
   analyzeOpeningBehavior,
   analyzeStock,
   AnalysisResult,
   atr,
+  bollingerBands,
+  BollingerBandsResult,
   macd,
   OpeningAnalysisResult,
   rsi,
   sma,
+  stochastic,
+  StochasticResult,
 } from "@/utils/indicators";
-import { getStockMeta } from "@/constants/bistStocks";
+import { getStockMeta, BIST30, UNIQUE_BIST_STOCKS } from "@/constants/bistStocks";
 import PriceChart from "@/components/PriceChart";
 import {
   IconStar,
@@ -95,6 +105,22 @@ const INDICATOR_INFO: Record<string, { title: string; body: string }> = {
   RSI: {
     title: "RSI (Göreceli Güç Endeksi)",
     body: "Fiyatın son 14 günde ne kadar hızlı yükselip düştüğünü ölçer (0-100). 30'un altı 'aşırı satım' (tepki alımı gelebilir), 70'in üstü 'aşırı alım' (kâr satışı gelebilir) anlamına gelir. Tek başına al/sat kararı için yeterli değildir, trend yönüyle birlikte değerlendirilmelidir.",
+  },
+  MACD: {
+    title: "MACD (Hareketli Ortalama Yakınsama-Iraksama)",
+    body: "12 ve 26 günlük EMA arasındaki farkı (MACD çizgisi) ve bunun 9 günlük EMA'sını (sinyal çizgisi) gösterir. MACD çizgisi sinyal çizgisini yukarı keserse alım, aşağı keserse satım sinyali olarak yorumlanır. Histogram pozitifken büyüyorsa yükseliş momentumu artıyor demektir.",
+  },
+  ATR: {
+    title: "ATR (Ortalama Gerçek Aralık)",
+    body: "Son 14 günde fiyatın ortalama oynaklığını (yüksek-düşük aralığı) gösterir. Yüksek ATR = yüksek volatilite, düşük ATR = düşük volatilite. Zarar-kes ve kâr-al seviyelerini belirlemede kullanılır (genellikle 1.5x ATR zarar-kes, 2.5x ATR kâr-al mesafesi).",
+  },
+  BB: {
+    title: "Bollinger Bantları",
+    body: "20 günlük SMA ve ±2 standart sapma üst/alt bandı oluşturur. Fiyat üst banda değdiğinde aşırı alım, alt banda değdiğinde aşırı satım bölgesinde olabilir. Band genişliği (bandwidth) daraldığında yakında büyük bir hareket beklenir. %B değeri 0-1 arasında fiyatın bant içindeki konumunu gösterir.",
+  },
+  STOCH: {
+    title: "Stochastic Osilatör (%K/%D)",
+    body: "14 günlük en yüksek-en düşük aralığına göre kapanışın konumunu ölçer (0-100). %K 20'nin altına inerse aşırı satım, 80'in üstüne çıkarsa aşırı alım sinyali verir. %D (3 günlük SMA) ile kesişimler alım/satım noktası olarak değerlendirilir.",
   },
 };
 
@@ -189,6 +215,9 @@ export default function StockDetailScreen() {
   const [alarmType, setAlarmType] = useState<AlertType>("above");
   const [alarmNote, setAlarmNote] = useState("");
   const [infoKey, setInfoKey] = useState<string | null>(null);
+  const [overview, setOverview] = useState<StockOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [relatedNews, setRelatedNews] = useState<MarketNews[]>([]);
 
   const symbolText = symbol?.toUpperCase().trim() ?? "";
   const quote = quotes[symbol ?? ""] ?? detailQuote;
@@ -246,6 +275,26 @@ export default function StockDetailScreen() {
     return () => {
       cancelled = true;
     };
+  }, [symbol]);
+
+  // Temel veri + haberi çek
+  useEffect(() => {
+    if (!symbol) return;
+    let cancelled = false;
+    setOverviewLoading(true);
+    setOverview(null);
+    setRelatedNews([]);
+    const sym = symbol.toUpperCase().trim();
+    fetchStockOverview(sym)
+      .then((data) => {
+        if (!cancelled) setOverview(data);
+      })
+      .catch(() => { if (!cancelled) setOverview(null); })
+      .finally(() => { if (!cancelled) setOverviewLoading(false); });
+    fetchMarketNews(sym, 5)
+      .then((news) => { if (!cancelled) setRelatedNews(news); })
+      .catch(() => { if (!cancelled) setRelatedNews([]); });
+    return () => { cancelled = true; };
   }, [symbol]);
 
   const handleFav = () => {
@@ -348,6 +397,10 @@ export default function StockDetailScreen() {
   const ma200Data = chart && n >= 200 ? sma(chart.closes, 200) : null;
   const atrData =
     chart && n >= 15 ? atr(chart.highs, chart.lows, chart.closes, 14) : null;
+  const bbData =
+    chart && n >= 20 ? bollingerBands(chart.closes, 20, 2) : null;
+  const stochData =
+    chart && n >= 14 ? stochastic(chart.highs, chart.lows, chart.closes, 14, 3) : null;
 
   const latestMacd = macdData?.macd[n - 1];
   const latestHist = macdData?.histogram[n - 1];
@@ -356,11 +409,22 @@ export default function StockDetailScreen() {
   const latestMa50 = ma50Data?.[n - 1];
   const latestMa200 = ma200Data?.[n - 1];
   const latestAtr = atrData?.[n - 1];
+  const latestBbUpper = bbData?.upper[n - 1];
+  const latestBbLower = bbData?.lower[n - 1];
+  const latestBbMid = bbData?.middle[n - 1];
+  const latestBbBandwidth = bbData?.bandwidth[n - 1];
+  const latestBbPctB = bbData?.percentB[n - 1];
+  const latestStochK = stochData?.k[n - 1];
+  const latestStochD = stochData?.d[n - 1];
   const chartOverlays = chart
     ? [
         { label: "SMA 20", values: sma(chart.closes, 20), color: "#c084fc" },
         { label: "SMA 50", values: sma(chart.closes, 50), color: "#a3e635" },
         { label: "SMA 200", values: sma(chart.closes, 200), color: "#38bdf8" },
+        ...(bbData ? [
+          { label: "BB Üst", values: bbData.upper, color: "#f97316" },
+          { label: "BB Alt", values: bbData.lower, color: "#f97316" },
+        ] : []),
       ]
     : [];
   const visibleChartOverlays = chartOverlays.filter((overlay) =>
@@ -405,6 +469,25 @@ export default function StockDetailScreen() {
         : session === "post"
           ? "Kapanış sonrası"
           : "Kapalı";
+
+  // Sektör karşılaştırma: aynı sektördeki diğer hisselerin bugünkü performansı
+  const sectorPeers = (() => {
+    if (!meta?.sector) return [];
+    return UNIQUE_BIST_STOCKS.filter(
+      (s) => s.sector === meta.sector && s.symbol !== symbolText
+    ).map((s) => s.symbol);
+  })();
+  const sectorPeersQuotes = sectorPeers
+    .map((s) => quotes[s])
+    .filter((q): q is QuoteData => q != null && q.regularMarketPrice > 0);
+  const sectorAvgChange = sectorPeersQuotes.length > 0
+    ? sectorPeersQuotes.reduce((sum, q) => sum + (q.regularMarketChangePercent ?? 0), 0) / sectorPeersQuotes.length
+    : null;
+  const myChange = quote?.regularMarketChangePercent ?? null;
+  const sectorOutperform =
+    myChange != null && sectorAvgChange != null
+      ? myChange - sectorAvgChange
+      : null;
 
   const rsiColor =
     latestRsi == null
@@ -877,6 +960,23 @@ export default function StockDetailScreen() {
                     onInfoPress={() => setInfoKey("RSI")}
                   />
                 )}
+                {latestStochK != null && (
+                  <IndicatorCard
+                    label="Stoch %K"
+                    subLabel="%D ile kesişim"
+                    value={latestStochK}
+                    min={0}
+                    max={100}
+                    color={
+                      latestStochK < 20
+                        ? colors.up
+                        : latestStochK > 80
+                          ? colors.down
+                          : colors.neutral
+                    }
+                    onInfoPress={() => setInfoKey("STOCH")}
+                  />
+                )}
               </View>
               <Text style={[styles.indHint, { color: colors.mutedForeground }]}>
                 Göstergeler birlikte değerlendirilir; hiçbiri tek başına kesin
@@ -932,9 +1032,27 @@ export default function StockDetailScreen() {
                     sub: "Volatilite",
                     isAtr: true,
                   },
+                  {
+                    label: "BB Üst",
+                    val: latestBbUpper,
+                    sub: `Bant: ${latestBbBandwidth?.toFixed(1) ?? "—"}%`,
+                    isBb: true,
+                  },
+                  {
+                    label: "BB Alt",
+                    val: latestBbLower,
+                    sub: `%B: ${latestBbPctB?.toFixed(2) ?? "—"}`,
+                    isBb: true,
+                  },
+                  {
+                    label: "Stoch %D",
+                    val: latestStochD,
+                    sub: `%K: ${latestStochK?.toFixed(1) ?? "—"}`,
+                    isStoch: true,
+                  },
                 ].map((item, idx) => {
                   const itemValue = item.val;
-                  if (itemValue == null && !item.isAtr) return null;
+                  if (itemValue == null && !item.isAtr && !item.isBb && !item.isStoch) return null;
                   let valColor =
                     itemValue == null
                       ? colors.mutedForeground
@@ -946,13 +1064,34 @@ export default function StockDetailScreen() {
                           ? colors.up
                           : colors.down
                         : colors.foreground;
+                  else if (item.isStoch && itemValue != null)
+                    valColor =
+                      itemValue < 20
+                        ? colors.up
+                        : itemValue > 80
+                          ? colors.down
+                          : colors.foreground;
                   else if (item.isAtr && itemValue != null)
                     valColor =
                       price != null && itemValue / price > 0.03
                         ? colors.neutral
                         : colors.foreground;
-                  else if (price != null && itemValue != null)
+                  else if (item.isBb && price != null && itemValue != null)
+                    valColor =
+                      item.sub === "BB Üst" && price > itemValue
+                        ? colors.down
+                        : item.sub === "BB Alt" && price < itemValue
+                          ? colors.up
+                          : colors.foreground;
+                  else if (price != null && itemValue != null && !item.isBb)
                     valColor = price > itemValue ? colors.up : colors.down;
+
+                  const displayValue =
+                    item.val == null
+                      ? "—"
+                      : item.isMacd || item.isStoch
+                        ? item.val.toFixed(2)
+                        : `₺${item.val.toFixed(2)}`;
 
                   return (
                     <View
@@ -984,11 +1123,7 @@ export default function StockDetailScreen() {
                         </Text>
                       </View>
                       <Text style={[styles.maValue, { color: valColor }]}>
-                        {item.val == null
-                          ? "—"
-                          : item.isMacd
-                            ? item.val.toFixed(2)
-                            : `₺${item.val.toFixed(2)}`}
+                        {displayValue}
                       </Text>
                     </View>
                   );
@@ -1007,6 +1142,170 @@ export default function StockDetailScreen() {
             </>
           )}
         </View>
+
+        {/* Temel Veriler */}
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Temel Veriler
+          </Text>
+          {overviewLoading ? (
+            <View style={styles.fundLoading}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.fundLoadingText, { color: colors.mutedForeground }]}>
+                Yükleniyor...
+              </Text>
+            </View>
+          ) : overview?.fundamentals ? (
+            <View style={styles.fundGrid}>
+              {overview.fundamentals.trailingPE != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>F/K</Text>
+                  <Text style={[styles.fundValue, { color: colors.foreground }]}>{overview.fundamentals.trailingPE.toFixed(1)}</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>Son 12 Ay</Text>
+                </View>
+              )}
+              {overview.fundamentals.forwardPE != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>İleri F/K</Text>
+                  <Text style={[styles.fundValue, { color: colors.foreground }]}>{overview.fundamentals.forwardPE.toFixed(1)}</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>Öngörülen</Text>
+                </View>
+              )}
+              {overview.fundamentals.priceToBook != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>PD/DD</Text>
+                  <Text style={[styles.fundValue, { color: colors.foreground }]}>{overview.fundamentals.priceToBook.toFixed(2)}</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>Fiyat/Defter</Text>
+                </View>
+              )}
+              {overview.fundamentals.returnOnEquity != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Özsermaye Getirisi</Text>
+                  <Text style={[styles.fundValue, { color: overview.fundamentals.returnOnEquity > 0 ? colors.up : colors.down }]}>{(overview.fundamentals.returnOnEquity * 100).toFixed(1)}%</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>ROE</Text>
+                </View>
+              )}
+              {overview.fundamentals.debtToEquity != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Borç/Özsermaye</Text>
+                  <Text style={[styles.fundValue, { color: overview.fundamentals.debtToEquity > 100 ? colors.down : colors.foreground }]}>{overview.fundamentals.debtToEquity.toFixed(1)}</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>%</Text>
+                </View>
+              )}
+              {overview.fundamentals.dividendYield != null && overview.fundamentals.dividendYield > 0 && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Temettü Verimi</Text>
+                  <Text style={[styles.fundValue, { color: colors.up }]}>{(overview.fundamentals.dividendYield * 100).toFixed(2)}%</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>Yıllık</Text>
+                </View>
+              )}
+              {overview.fundamentals.profitMargins != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Kâr Marjı</Text>
+                  <Text style={[styles.fundValue, { color: overview.fundamentals.profitMargins > 0 ? colors.up : colors.down }]}>{(overview.fundamentals.profitMargins * 100).toFixed(1)}%</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>Net</Text>
+                </View>
+              )}
+              {overview.fundamentals.revenueGrowth != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Gelir Büyümesi</Text>
+                  <Text style={[styles.fundValue, { color: overview.fundamentals.revenueGrowth > 0 ? colors.up : colors.down }]}>{(overview.fundamentals.revenueGrowth * 100).toFixed(1)}%</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>Yıllık</Text>
+                </View>
+              )}
+              {overview.fundamentals.earningsGrowth != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Kâr Büyümesi</Text>
+                  <Text style={[styles.fundValue, { color: overview.fundamentals.earningsGrowth > 0 ? colors.up : colors.down }]}>{(overview.fundamentals.earningsGrowth * 100).toFixed(1)}%</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>Yıllık</Text>
+                </View>
+              )}
+              {overview.fundamentals.targetMeanPrice != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Analist Hedef</Text>
+                  <Text style={[styles.fundValue, { color: price != null && overview.fundamentals.targetMeanPrice > price ? colors.up : colors.down }]}>₺{overview.fundamentals.targetMeanPrice.toFixed(2)}</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>{overview.fundamentals.analystCount ?? "—"} analist</Text>
+                </View>
+              )}
+              {overview.fundamentals.recommendationMean != null && (
+                <View style={[styles.fundItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.fundLabel, { color: colors.mutedForeground }]}>Analist Önerisi</Text>
+                  <Text style={[styles.fundValue, { color: overview.fundamentals.recommendationMean <= 2 ? colors.up : overview.fundamentals.recommendationMean >= 4 ? colors.down : colors.foreground }]}>{overview.fundamentals.recommendationMean.toFixed(1)}/5</Text>
+                  <Text style={[styles.fundSub, { color: colors.mutedForeground }]}>{overview.fundamentals.recommendationMean <= 1.5 ? "Güçlü Al" : overview.fundamentals.recommendationMean <= 2.5 ? "Al" : overview.fundamentals.recommendationMean <= 3.5 ? "Tut" : overview.fundamentals.recommendationMean <= 4.5 ? "Sat" : "Güçlü Sat"}</Text>
+                </View>
+              )}
+            </View>
+          ) : !overviewLoading && (
+            <Text style={[styles.fundEmpty, { color: colors.mutedForeground }]}>
+              Temel veri bulunamadı
+            </Text>
+          )}
+        </View>
+
+        {/* Sektör Karşılaştırma */}
+        {sectorPeers.length > 0 && (
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              Sektör Karşılaştırma
+            </Text>
+            <View style={[styles.sectorHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.sectorLabel, { color: colors.mutedForeground }]}>Sektör Ort. Değişim</Text>
+              <Text style={[styles.sectorValue, { color: sectorAvgChange != null ? (sectorAvgChange >= 0 ? colors.up : colors.down) : colors.mutedForeground }]}>
+                {sectorAvgChange != null ? `${sectorAvgChange >= 0 ? "+" : ""}${sectorAvgChange.toFixed(2)}%` : "—"}
+              </Text>
+            </View>
+            {sectorOutperform != null && price != null && (
+              <View style={[styles.sectorHeader, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.sectorLabel, { color: colors.mutedForeground }]}>Sektöre Göre</Text>
+                <Text style={[styles.sectorValue, { color: sectorOutperform >= 0 ? colors.up : colors.down }]}>
+                  {sectorOutperform >= 0 ? "+" : ""}{sectorOutperform.toFixed(2)}%
+                </Text>
+              </View>
+            )}
+            {sectorPeers.slice(0, 5).map((peer: string) => {
+              const peerQuote = sectorPeersQuotes.find((q: any) => q.symbol === peer);
+              return (
+                <View key={peer} style={[styles.sectorPeerRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.sectorPeerName, { color: colors.foreground }]}>{peer}</Text>
+                  <Text style={[styles.sectorPeerChange, { color: peerQuote?.regularMarketChangePercent != null ? (peerQuote.regularMarketChangePercent >= 0 ? colors.up : colors.down) : colors.mutedForeground }]}>
+                    {peerQuote?.regularMarketChangePercent != null ? `${peerQuote.regularMarketChangePercent >= 0 ? "+" : ""}${peerQuote.regularMarketChangePercent.toFixed(2)}%` : "—"}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Haber Akışı */}
+        {relatedNews.length > 0 && (
+          <View style={[styles.section, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              Haber Akışı
+            </Text>
+            {relatedNews.slice(0, 8).map((news: any, idx: number) => (
+              <Pressable
+                key={idx}
+                style={[styles.newsItem, { borderBottomColor: colors.border }]}
+                onPress={() => {
+                  if (news.link) Linking.openURL(news.link);
+                }}
+                android_ripple={{ color: colors.border }}
+              >
+                <Text style={[styles.newsTitle, { color: colors.foreground }]} numberOfLines={2}>
+                  {news.title}
+                </Text>
+                <View style={styles.newsMeta}>
+                  {news.publisher && (
+                    <Text style={[styles.newsPublisher, { color: colors.mutedForeground }]}>{news.publisher}</Text>
+                  )}
+                  {news.time && (
+                    <Text style={[styles.newsTime, { color: colors.mutedForeground }]}>{news.time}</Text>
+                  )}
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* 50 günlük açılış davranışı */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
@@ -1984,4 +2283,104 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   saveBtnText: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff" },
+  // Fundamentals grid
+  fundGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  fundItem: {
+    width: "47%",
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  fundLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    marginBottom: 2,
+  },
+  fundValue: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+  },
+  fundSub: {
+    fontSize: 9,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  fundLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+  },
+  fundLoadingText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  fundEmpty: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    paddingVertical: 8,
+  },
+  // Sector comparison
+  sectorHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 6,
+  },
+  sectorLabel: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  sectorValue: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+  },
+  sectorPeerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sectorPeerName: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  sectorPeerChange: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+  // News feed
+  newsItem: {
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  newsTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  newsMeta: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  newsPublisher: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  newsTime: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
 });
