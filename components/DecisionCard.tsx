@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import type { ErkenHareketEtiketi, PiyasaHavasi } from "@/services/treydMotoru";
+
 interface DecisionCardProps {
   sembol: string;
   skor: number;
@@ -32,6 +33,13 @@ interface DecisionCardProps {
   erkenHareketEtiketi?: ErkenHareketEtiketi;
   erkenHareketNedenleri?: string[];
   piyasaHavasi?: PiyasaHavasi;
+  /* Unified score & status — new fields */
+  genelPuan?: number;
+  durumEtiketi?: string;
+  cekirgeUygun?: boolean;
+  cekirgeSkoru?: number;
+  cekirgeNedenleri?: string[];
+  cekirgeRiski?: string;
 }
 
 function SignalChip({
@@ -73,7 +81,6 @@ export default function DecisionCard({
   etiket = "TAKİP LİSTESİ",
   teyitSayisi = 0,
   toplamTeyit = 6,
-  trendTeyitli = false,
   gunlukTrend = "sideways",
   direnc,
   direncKirildi = false,
@@ -87,11 +94,15 @@ export default function DecisionCard({
   yuksekTepe = false,
   yapiTeyitli = false,
   teyitler = [],
-  radarDurumu = "gun_ici_izleme",
-  erkenHareketSkoru = 0,
   erkenHareketEtiketi = "NORMAL",
   erkenHareketNedenleri = [],
   piyasaHavasi = "Piyasa desteği zayıf",
+  genelPuan = 0,
+  durumEtiketi = "İzlemede",
+  cekirgeUygun = false,
+  cekirgeSkoru = 0,
+  cekirgeNedenleri = [],
+  cekirgeRiski = "Orta",
 }: DecisionCardProps) {
   const colors = useColors();
   const hasProximityBar =
@@ -113,8 +124,7 @@ export default function DecisionCard({
     : null;
   const isStrongBuy = etiket === "GÜÇLÜ ALIM";
   const tagColor = isStrongBuy ? colors.up : colors.primary;
-  // Günlük trend etiketi yalnızca toplam teyit 5/6 seviyesine ulaştığında olumlu yazılır.
-  const dailyConfirmationComplete = teyitSayisi >= 5;
+
   const trendLabel =
     gunlukTrend === "up"
       ? "Trend yukarı"
@@ -136,22 +146,16 @@ export default function DecisionCard({
       : obvDirection === "down"
         ? "OBV aşağı"
         : "OBV yatay";
-  const radarLabel =
-    radarDurumu === "gunluk_teyitli"
-      ? "Günlük kapanış teyitli"
-      : radarDurumu === "erken_hareket"
-        ? "Erken hareket radarı"
-        : "Gün içi izleme";
-  const radarColor =
-    radarDurumu === "gunluk_teyitli" ? colors.up : colors.primary;
-  const showEarlyMovement =
-    Number.isFinite(erkenHareketSkoru) && erkenHareketSkoru >= 30;
-  const earlyMovementColor =
-    erkenHareketSkoru >= 70
+
+  /* durumEtiketi-based badge colors */
+  const durumColor =
+    durumEtiketi === "Teyitli"
       ? colors.up
-      : erkenHareketSkoru >= 50
+      : durumEtiketi === "Erken"
         ? colors.primary
-        : colors.neutral;
+        : durumEtiketi === "Çekirge"
+          ? colors.neutral
+          : colors.mutedForeground;
 
   const dailyChange = Number.isFinite(gunlukDegisim)
     ? (gunlukDegisim as number)
@@ -191,45 +195,38 @@ export default function DecisionCard({
           </View>
         </View>
         <View style={styles.scoreBox}>
-          <Text style={[styles.label, { color: tagColor }]}>{etiket}</Text>
-          <Text style={[styles.score, { color: colors.foreground }]}>
-            {skor.toFixed(2)}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.statusRow}>
-        <View
-          style={[styles.statusBadge, { backgroundColor: `${radarColor}18` }]}
-        >
-          <Text style={[styles.statusText, { color: radarColor }]}>
-            {radarLabel}
-          </Text>
-        </View>
-      </View>
-
-      {showEarlyMovement && (
-        <View style={styles.earlyMovementRow}>
           <View
-            style={[
-              styles.earlyMovementBadge,
-              { backgroundColor: `${earlyMovementColor}18` },
-            ]}
+            style={[styles.durumBadge, { backgroundColor: `${durumColor}18` }]}
           >
-            <Text
-              style={[styles.earlyMovementText, { color: earlyMovementColor }]}
-            >
-              {erkenHareketEtiketi}
+            <Text style={[styles.durumBadgeText, { color: durumColor }]}>
+              {durumEtiketi}
             </Text>
           </View>
-          <Text
-            style={[styles.earlyMovementScore, { color: earlyMovementColor }]}
-          >
-            {erkenHareketSkoru}/100
+          <Text style={[styles.genelPuanText, { color: colors.foreground }]}>
+            {genelPuan}/100
           </Text>
         </View>
+      </View>
+
+      {/* Çekirge inline info — only when applicable */}
+      {cekirgeUygun && cekirgeSkoru >= 35 && (
+        <View style={styles.cekirgeRow}>
+          <Text style={[styles.cekirgeLabel, { color: colors.neutral }]}>
+            Çekirge {cekirgeSkoru}/100 · {cekirgeRiski} risk
+          </Text>
+          {cekirgeNedenleri.length > 0 && (
+            <Text
+              style={[styles.cekirgeNeden, { color: colors.mutedForeground }]}
+              numberOfLines={1}
+            >
+              {cekirgeNedenleri.slice(0, 2).join(" · ")}
+            </Text>
+          )}
+        </View>
       )}
-      {showEarlyMovement && erkenHareketNedenleri.length > 0 && (
+
+      {/* Erken hareket context — only when applicable */}
+      {erkenHareketEtiketi !== "NORMAL" && erkenHareketNedenleri.length > 0 && (
         <View style={styles.earlyReasons}>
           <Text
             style={[styles.earlyContext, { color: colors.mutedForeground }]}
@@ -247,28 +244,8 @@ export default function DecisionCard({
         </View>
       )}
 
+      {/* Teyit count row — replaces old "Günlük trend teyitli/teyitsiz" badge */}
       <View style={styles.confirmationRow}>
-        <View
-          style={[
-            styles.confirmationBadge,
-            {
-              backgroundColor: dailyConfirmationComplete
-                ? `${colors.up}18`
-                : `${colors.neutral}18`,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.confirmationText,
-              { color: dailyConfirmationComplete ? colors.up : colors.neutral },
-            ]}
-          >
-            {dailyConfirmationComplete
-              ? "Günlük trend teyitli"
-              : "Günlük trend teyitsiz"}
-          </Text>
-        </View>
         <Text
           style={[styles.confirmationCount, { color: colors.mutedForeground }]}
         >
@@ -279,7 +256,7 @@ export default function DecisionCard({
       <View style={styles.signalGrid}>
         <SignalChip
           label={trendLabel}
-          confirmed={trendTeyitli}
+          confirmed={gunlukTrend === "up"}
           colors={colors}
         />
         <SignalChip
@@ -363,49 +340,25 @@ const styles = StyleSheet.create({
   price: { fontSize: 12, fontFamily: "Inter_400Regular" },
   dailyChange: { fontSize: 12, fontFamily: "Inter_700Bold" },
   scoreBox: { alignItems: "flex-end", marginLeft: 8 },
-  label: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 0.4 },
-  score: { fontSize: 20, fontFamily: "Inter_700Bold", marginTop: 2 },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  statusBadge: {
+  durumBadge: {
     borderRadius: 6,
     paddingHorizontal: 7,
-    paddingVertical: 4,
-    flexShrink: 1,
+    paddingVertical: 3,
+    marginBottom: 2,
   },
-  statusText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  earlyMovementRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  earlyMovementBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    flexShrink: 1,
-  },
-  earlyMovementText: { fontSize: 10, fontFamily: "Inter_700Bold" },
-  earlyMovementScore: { fontSize: 11, fontFamily: "Inter_700Bold" },
+  durumBadgeText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  genelPuanText: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  cekirgeRow: { gap: 2 },
+  cekirgeLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  cekirgeNeden: { fontSize: 9, fontFamily: "Inter_400Regular" },
   earlyReasons: { gap: 2 },
   earlyContext: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   earlyReason: { fontSize: 9, lineHeight: 13, fontFamily: "Inter_400Regular" },
   confirmationRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
   },
-  confirmationBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-  },
-  confirmationText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   confirmationCount: { fontSize: 10, fontFamily: "Inter_400Regular" },
   signalGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
   chip: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  SectionList,
+  FlatList,
   Pressable,
   StyleSheet,
   Text,
@@ -35,54 +35,7 @@ export default function TreydScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDemoInfo, setShowDemoInfo] = useState(false);
   const marketOpen = isPiyasaAcik();
-  const dailyResults = useMemo(
-    () => results.filter((item) => item.radarDurumu === "gunluk_teyitli"),
-    [results],
-  );
-  const intradayResults = useMemo(
-    () => results.filter((item) => item.radarDurumu === "gun_ici_izleme"),
-    [results],
-  );
-  const earlyMovementResults = useMemo(
-    () => results.filter((item) => item.radarDurumu === "erken_hareket"),
-    [results],
-  );
-  const cekirgeResults = useMemo(
-    () => results.filter((item) => item.cekirgeUygun),
-    [results],
-  );
-  const sections = useMemo(() => {
-    const nextSections: Array<{
-      key: string;
-      title: string;
-      data: TreydSinyali[];
-    }> = [];
-    if (dailyResults.length > 0)
-      nextSections.push({
-        key: "daily",
-        title: "Günlük Kapanış Teyitli",
-        data: dailyResults,
-      });
-    if (earlyMovementResults.length > 0)
-      nextSections.push({
-        key: "early",
-        title: "Erken Hareket Radarı",
-        data: earlyMovementResults,
-      });
-    if (intradayResults.length > 0)
-      nextSections.push({
-        key: "intraday",
-        title: "Gün İçi İzleme",
-        data: intradayResults,
-      });
-    if (cekirgeResults.length > 0)
-      nextSections.push({
-        key: "cekirge",
-        title: "Çekirge Radarı",
-        data: cekirgeResults,
-      });
-    return nextSections;
-  }, [dailyResults, earlyMovementResults, intradayResults, cekirgeResults]);
+  /* results is already sorted by genelPuan desc from getTop6TreydWithConfirmation */
 
   const scan = useCallback(async () => {
     if (!data || isScanning || isRefreshing) return;
@@ -96,22 +49,17 @@ export default function TreydScreen() {
         prepareMorningCandidates(
           confirmedResults
             .filter((item) => favorites.includes(item.sembol))
-            .filter(
-              (item) =>
-                item.radarDurumu === "gunluk_teyitli" ||
-                (item.radarDurumu === "erken_hareket" &&
-                  item.erkenHareketSkoru >= 50) ||
-                item.cekirgeUygun,
-            )
+            .filter((item) => item.genelPuan >= 50)
             .map((item) => ({
               symbol: item.sembol,
               price: item.fiyat,
-              signalType: item.cekirgeUygun
-                ? ("cekirge_adayi" as const)
-                : item.radarDurumu === "gunluk_teyitli"
+              signalType:
+                item.durumEtiketi === "Teyitli"
                   ? ("gunluk_teyitli" as const)
-                  : ("erken_hareket" as const),
-              score: item.erkenHareketSkoru,
+                  : item.durumEtiketi === "Çekirge"
+                    ? ("cekirge_adayi" as const)
+                    : ("erken_hareket" as const),
+              score: item.genelPuan,
               confirmations: item.teyitSayisi,
               dailyTrend: item.gunlukTrend,
               dailyChange: item.degisimYuzde,
@@ -184,15 +132,10 @@ export default function TreydScreen() {
   const demoSignalSignature = useMemo(
     () =>
       results
-        .filter(
-          (item) =>
-            item.radarDurumu === "gunluk_teyitli" ||
-            (item.radarDurumu === "erken_hareket" &&
-              item.erkenHareketSkoru >= 50),
-        )
+        .filter((item) => item.genelPuan >= 50)
         .map(
           (item) =>
-            `${item.sembol}-${item.radarDurumu}-${item.teyitSayisi}-${item.erkenHareketSkoru}`,
+            `${item.sembol}-${item.durumEtiketi}-${item.teyitSayisi}-${item.genelPuan}`,
         )
         .join("|"),
     [results],
@@ -201,20 +144,15 @@ export default function TreydScreen() {
   useEffect(() => {
     if (!hasScanned || isScanning || !demoSignalSignature) return;
     const demoSignals = results
-      .filter(
-        (item) =>
-          item.radarDurumu === "gunluk_teyitli" ||
-          (item.radarDurumu === "erken_hareket" &&
-            item.erkenHareketSkoru >= 50),
-      )
+      .filter((item) => item.genelPuan >= 50)
       .map((item) => ({
         symbol: item.sembol,
         price: item.fiyat,
         signalType:
-          item.radarDurumu === "gunluk_teyitli"
+          item.durumEtiketi === "Teyitli"
             ? ("gunluk_teyitli" as const)
             : ("erken_hareket" as const),
-        score: item.erkenHareketSkoru,
+        score: item.genelPuan,
         confirmations: item.teyitSayisi,
         dailyTrend: item.gunlukTrend,
       }));
@@ -255,7 +193,7 @@ export default function TreydScreen() {
             TREND
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            BIST 30/50 içinde çoklu teyitli trend taraması
+            BIST 30/50 içinde genel puana göre sıralı trend taraması
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -365,17 +303,18 @@ export default function TreydScreen() {
         </View>
         {showDemoInfo && (
           <Text style={[styles.noticeText, { color: colors.mutedForeground }]}>
-            Günlük Kapanış Teyitli tamamlanmış günlük mumlara dayanır. Erken
-            Hareket daha erken fakat daha riskli uyarıdır. Gün İçi İzleme
-            kapanışta değişebilir. Çekirge yatay birikim adayıdır; kırılım
-            teyidi gerekir. Eski veya belirsiz veriyle yeni bildirim üretilmez.
+            Teyitli adaylar tamamlanmış günlük mumlara dayanır. Erken sinyaller
+            daha erken fakat daha riskli uyarıdır. Çekirge yatay birikim
+            adayıdır; kırılım teyidi gerekir. Sıralama genel puana göredir —
+            üst sıralar daha çok teyitli, alt sıralar daha erken aşamada.
+            Eski veya belirsiz veriyle yeni bildirim üretilmez.
           </Text>
         )}
       </View>
 
-      <SectionList<TreydSinyali>
-        sections={sections}
-        keyExtractor={(item) => `${item.sembol}-${item.radarDurumu}`}
+      <FlatList<TreydSinyali>
+        data={results}
+        keyExtractor={(item) => item.sembol}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: insets.bottom + 100 },
@@ -383,24 +322,28 @@ export default function TreydScreen() {
         showsVerticalScrollIndicator={false}
         refreshing={scanBusy}
         onRefresh={() => void refreshAndScan()}
-        renderSectionHeader={({ section }) => (
-          <View
-            style={[
-              styles.sectionHeader,
-              { backgroundColor: colors.background },
-            ]}
-          >
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              {section.title}
-            </Text>
-            <Text
-              style={[styles.sectionCount, { color: colors.mutedForeground }]}
+        ListHeaderComponent={
+          results.length > 0 ? (
+            <View
+              style={[
+                styles.listHeader,
+                { backgroundColor: colors.background },
+              ]}
             >
-              {section.data.length} aday
-            </Text>
-          </View>
-        )}
-        renderItem={({ item, index, section }) => (
+              <Text
+                style={[styles.listHeaderTitle, { color: colors.foreground }]}
+              >
+                Trend Adayları
+              </Text>
+              <Text
+                style={[styles.listHeaderCount, { color: colors.mutedForeground }]}
+              >
+                {results.length} aday
+              </Text>
+            </View>
+          ) : null
+        }
+        renderItem={({ item, index }) => (
           <View style={styles.resultRow}>
             <View style={[styles.rank, { backgroundColor: colors.secondary }]}>
               <Text style={[styles.rankText, { color: colors.primary }]}>
@@ -408,26 +351,6 @@ export default function TreydScreen() {
               </Text>
             </View>
             <View style={styles.resultCard}>
-              {section.key === "cekirge" ? (
-                <View
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingTop: 10,
-                    paddingBottom: 4,
-                    gap: 3,
-                  }}
-                >
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                    Çekirge Adayı · {item.cekirgeSkoru}/100
-                  </Text>
-                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                    {item.cekirgeNedenleri.slice(0, 2).join(" · ")}
-                  </Text>
-                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                    Risk: {item.cekirgeRiski}
-                  </Text>
-                </View>
-              ) : null}
               <DecisionCard
                 sembol={item.sembol}
                 skor={item.skor}
@@ -461,53 +384,16 @@ export default function TreydScreen() {
                 erkenHareketEtiketi={item.erkenHareketEtiketi}
                 erkenHareketNedenleri={item.erkenHareketNedenleri}
                 piyasaHavasi={item.piyasaHavasi}
+                genelPuan={item.genelPuan}
+                durumEtiketi={item.durumEtiketi}
+                cekirgeUygun={item.cekirgeUygun}
+                cekirgeSkoru={item.cekirgeSkoru}
+                cekirgeNedenleri={item.cekirgeNedenleri}
+                cekirgeRiski={item.cekirgeRiski}
               />
             </View>
           </View>
         )}
-        ListFooterComponent={
-          dailyResults.length > 0 ? (
-            <View
-              style={[
-                styles.dailyTradeSection,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <Text
-                style={[styles.dailyTradeTitle, { color: colors.foreground }]}
-              >
-                Günlük Trade Adayları
-              </Text>
-              <View style={styles.dailyTradeNames}>
-                {dailyResults.map((item) => (
-                  <Pressable
-                    key={`daily-${item.sembol}`}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/stock/[symbol]",
-                        params: { symbol: item.sembol },
-                      })
-                    }
-                    style={({ pressed }) => [
-                      styles.dailyTradeName,
-                      { backgroundColor: colors.secondary },
-                      pressed && styles.dailyTradeNamePressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.dailyTradeNameText,
-                        { color: colors.primary },
-                      ]}
-                    >
-                      {item.sembol}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null
-        }
         ListEmptyComponent={
           <View style={[styles.empty, { borderColor: colors.border }]}>
             {isLoading || isFetching || isScanning ? (
@@ -526,7 +412,7 @@ export default function TreydScreen() {
                 >
                   {error
                     ? "Bağlantıyı kontrol edip aşağı çekerek yeniden deneyin."
-                    : "Yeterli likidite ve en az 5/6 teyit alan adaylar burada görünür."}
+                    : "Yeterli likidite ve genel puanı yüksek adaylar burada görünür."}
                 </Text>
               </>
             )}
@@ -612,15 +498,15 @@ const styles = StyleSheet.create({
   },
   demoLinkText: { fontSize: 11, fontFamily: "Inter_700Bold" },
   listContent: { paddingHorizontal: 12, paddingTop: 6 },
-  sectionHeader: {
+  listHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingTop: 12,
     paddingBottom: 8,
   },
-  sectionTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  sectionCount: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  listHeaderTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  listHeaderCount: { fontSize: 11, fontFamily: "Inter_500Medium" },
   resultRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -652,24 +538,4 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     textAlign: "center",
   },
-  dailyTradeSection: {
-    marginTop: 12,
-    marginBottom: 8,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  dailyTradeTitle: {
-    fontSize: 15,
-    fontFamily: "Inter_700Bold",
-    marginBottom: 10,
-  },
-  dailyTradeNames: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  dailyTradeName: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  dailyTradeNamePressed: { opacity: 0.65 },
-  dailyTradeNameText: { fontSize: 12, fontFamily: "Inter_700Bold" },
 });

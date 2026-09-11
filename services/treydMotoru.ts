@@ -100,6 +100,10 @@ export type TreydSinyali = {
   cekirgeRiski: string;
   /** Ekranda Çekirge Adayı olarak gösterilip gösterilmeyeceği. */
   cekirgeUygun: boolean;
+  /** Tek çatı altında birleşik genel puan (0-100). Teyit, erken hareket ve çekirge puanlarının ağırlıklı ortalamasıdır. */
+  genelPuan: number;
+  /** Kısa durum etiketi (Teyitli / İzlemede / Erken / Çekirge). */
+  durumEtiketi: string;
 };
 
 type SectorSnapshot = {
@@ -233,6 +237,8 @@ const getQuoteCandidate = (
     cekirgeNedenleri: ["Yatay yapı için yeterli veri yok"],
     cekirgeRiski: "Veri yetersiz; aday olarak değerlendirilmemeli.",
     cekirgeUygun: false,
+    genelPuan: 0,
+    durumEtiketi: "İzlemede",
   };
 };
 
@@ -833,6 +839,28 @@ const confirmCandidate = async (
       opening,
       teyitSayisi,
     );
+
+    // ─── Birleşik genel puan (0-100) ───
+    // Teyit ağırlığı en yüksek, erken hareket orta, çekirge en düşük
+    const teyitPuan = clamp((teyitSayisi / TOTAL_CONFIRMATIONS) * 100, 0, 100);
+    const genelPuan = clamp(
+      Math.round(
+        teyitPuan * 0.50 +
+        earlyMovement.erkenHareketSkoru * 0.35 +
+        cekirge.cekirgeSkoru * 0.15,
+      ),
+      0,
+      100,
+    );
+    const durumEtiketi =
+      radarDurumu === "gunluk_teyitli"
+        ? "Teyitli"
+        : earlyMovement.erkenHareketSkoru >= 50
+          ? "Erken"
+          : cekirge.cekirgeUygun && cekirge.cekirgeSkoru >= CEKIRGE_MIN_SCORE
+            ? "Çekirge"
+            : "İzlemede";
+
     return {
       ...candidate,
       radarDurumu,
@@ -861,9 +889,11 @@ const confirmCandidate = async (
       ...earlyMovement,
       ...cekirge,
       kararDestegi,
+      genelPuan,
+      durumEtiketi,
     };
   } catch (err) {
-    logger.warn("confirmCandidate: tarihsel veri alınamadı", { symbol: candidate.symbol, err });
+    logger.warn("confirmCandidate", `tarihsel veri alınamadı — ${candidate.sembol}`);
     return {
       ...candidate,
       etiket: "TAKİP LİSTESİ",
@@ -872,6 +902,8 @@ const confirmCandidate = async (
       cekirgeNedenleri: ["Yatay yapı verisi alınamadı"],
       cekirgeRiski: "Tarihsel veri alınamadı; aday olarak değerlendirilmemeli.",
       cekirgeUygun: false,
+      genelPuan: 0,
+      durumEtiketi: "İzlemede",
     };
   }
 };
@@ -886,50 +918,45 @@ export const getTop6TreydWithConfirmation = async (
   const confirmed = await Promise.all(
     candidates.map((candidate) => confirmCandidate(candidate, context)),
   );
-  const eligible = confirmed.filter(
-    (signal) => signal.teyitSayisi >= MOMENTUM_CONFIRMATIONS_REQUIRED,
-  );
+
+  // ─── Tek çatı: tekrarsız, birleşik genel puana göre sıralama ───
+  // Aynı hisse birden fazla kategoriye girebilir; en yüksek genelPuan'lı versiyonu tut
+  const bestBySymbol = new Map<string, TreydSinyali>();
+  for (const signal of confirmed) {
+    const existing = bestBySymbol.get(signal.sembol);
+    if (!existing || signal.genelPuan > existing.genelPuan) {
+      bestBySymbol.set(signal.sembol, signal);
+    }
+  }
+
+  // Erken hareket skoru yeterliyse radarDurumu'nu güncelle
+  const unified = Array.from(bestBySymbol.values()).map((signal) => {
+    if (
+      signal.radarDurumu === "gun_ici_izleme" &&
+      signal.erkenHareketSkoru >= EARLY_RADAR_MIN_SCORE &&
+      signal.teyitSayisi < MOMENTUM_CONFIRMATIONS_REQUIRED
+    ) {
+      return { ...signal, radarDurumu: "erken_hareket" as const };
+    }
+    return signal;
+  });
+
+  // Genel puana göre yukarıdan aşağı sırala; eşitse BIST 30 öncelikli
   const sortSignals = (a: TreydSinyali, b: TreydSinyali): number => {
+    const puanDiff = b.genelPuan - a.genelPuan;
+    if (puanDiff !== 0) return puanDiff;
     const indexPriority =
       Number(BIST30_SET.has(b.sembol)) - Number(BIST30_SET.has(a.sembol));
     return indexPriority || b.skor - a.skor;
   };
-  const dailyConfirmed = eligible
-    .filter((signal) => signal.radarDurumu === "gunluk_teyitli")
-    .sort(sortSignals)
-    .slice(0, 6);
-  const intradayWatch = confirmed
+
+  return unified
     .filter(
       (signal) =>
-        signal.radarDurumu === "gun_ici_izleme" &&
-        signal.teyitSayisi >= INTRADAY_MIN_CONFIRMATIONS,
+        signal.teyitSayisi >= INTRADAY_MIN_CONFIRMATIONS ||
+        signal.erkenHareketSkoru >= EARLY_RADAR_MIN_SCORE ||
+        signal.cekirgeUygun,
     )
     .sort(sortSignals)
-    .slice(0, 6);
-  const reservedSymbols = new Set(
-    [...dailyConfirmed, ...intradayWatch].map((signal) => signal.sembol),
-  );
-  const earlyMovement = confirmed
-    .filter(
-      (signal) =>
-        signal.erkenHareketSkoru >= EARLY_RADAR_MIN_SCORE &&
-        !reservedSymbols.has(signal.sembol),
-    )
-    .sort((a, b) => {
-      const scoreDifference = b.erkenHareketSkoru - a.erkenHareketSkoru;
-      return scoreDifference || sortSignals(a, b);
-    })
-    .slice(0, 6)
-    .map((signal) => ({ ...signal, radarDurumu: "erken_hareket" as const }));
-
-  const selectedBase = [...dailyConfirmed, ...earlyMovement, ...intradayWatch];
-  const selectedSymbols = new Set(selectedBase.map((signal) => signal.sembol));
-  const cekirgeCandidates = confirmed
-    .filter(
-      (signal) => signal.cekirgeUygun && !selectedSymbols.has(signal.sembol),
-    )
-    .sort((a, b) => b.cekirgeSkoru - a.cekirgeSkoru || sortSignals(a, b))
-    .slice(0, 6);
-
-  return [...selectedBase, ...cekirgeCandidates];
+    .slice(0, 12);
 };
