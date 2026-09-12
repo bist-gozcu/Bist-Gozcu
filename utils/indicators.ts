@@ -299,6 +299,195 @@ export function stochastic(
   return { k, d: dResult };
 }
 
+/* ─── Keltner Channel ─── */
+export interface KeltnerChannelResult {
+  upper: number[];
+  middle: number[]; // EMA of typical price
+  lower: number[];
+  bandwidth: number[];
+}
+
+/**
+ * Keltner Channel: EMA(typicalPrice, emaPeriod) ± multiplier × ATR(atrPeriod).
+ * Default: 20-period EMA, 10-period ATR, 1.5 multiplier (TC2000 / TTM Squeeze style).
+ */
+export function keltnerChannel(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  emaPeriod = 20,
+  atrPeriod = 10,
+  multiplier = 1.5,
+): KeltnerChannelResult {
+  const n = Math.min(highs.length, lows.length, closes.length);
+  const upper: number[] = new Array(n).fill(NaN);
+  const middle: number[] = new Array(n).fill(NaN);
+  const lower: number[] = new Array(n).fill(NaN);
+  const bandwidth: number[] = new Array(n).fill(NaN);
+
+  // Typical price = (high + low + close) / 3
+  const typical: number[] = new Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    if (Number.isFinite(highs[i]) && Number.isFinite(lows[i]) && Number.isFinite(closes[i])) {
+      typical[i] = (highs[i] + lows[i] + closes[i]) / 3;
+    }
+  }
+
+  // EMA of typical price
+  const emaTP = ema(typical, emaPeriod);
+
+  // ATR
+  const atrArr = atr(highs, lows, closes, atrPeriod);
+
+  for (let i = 0; i < n; i++) {
+    if (isNaN(emaTP[i]) || isNaN(atrArr[i])) continue;
+    middle[i] = emaTP[i];
+    upper[i] = emaTP[i] + multiplier * atrArr[i];
+    lower[i] = emaTP[i] - multiplier * atrArr[i];
+    bandwidth[i] = middle[i] > 0 ? ((upper[i] - lower[i]) / middle[i]) * 100 : NaN;
+  }
+
+  return { upper, middle, lower, bandwidth };
+}
+
+/* ─── Squeeze Tespiti (TTM Squeeze benzeri) ─── */
+export interface SqueezeResult {
+  /** Bollinger BandWidth — daralma ölçüsü */
+  bbBandwidth: number;
+  /** Keltner BandWidth */
+  kcBandwidth: number;
+  /** BB bantları Keltner'in içinde mi? (sıkışma aktif) */
+  isSqueezed: boolean;
+  /** Squeeze'in kaç bar'dır devam ettiği */
+  squeezeDuration: number;
+  /** BB BandWidth, son 125 barın en düşüğünün %15 üstünde mi? (kul Spike) */
+  bbSpike: boolean;
+  /** Squeeze sonrası patlama (momentum artıyor, BB > KC) */
+  fired: boolean;
+  /** BB %B — 1'in üstünde = üst bandı kırmış, 0'ın altında = alt bandı kırmış */
+  percentB: number;
+  /** momentumYonu: fired ise histogram yönü (yukarı/aşağı) */
+  momentumDirection: "up" | "down" | "flat";
+  /** Son bar'ın BB üst bandı */
+  bbUpper: number;
+  /** Son bar'ın BB alt bandı */
+  bbLower: number;
+  /** Son bar'ın KC üst bandı */
+  kcUpper: number;
+  /** Son bar'ın KC alt bandı */
+  kcLower: number;
+}
+
+/**
+ * TTM Squeeze mantığı:
+ * - Sıkışma (squeeze): BB bantları KC bantlarının içinde
+ * - Patlama (fired): BB bantları KC'nin dışına çıktı (squeeze bitti)
+ * - BB Spike: BandWidth son 125 barın min'inin %15 üstünde → tuzak değil gerçek sıkışma
+ */
+export function detectSqueeze(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+  bbPeriod = 20,
+  bbStdDev = 2,
+  kcEmaPeriod = 20,
+  kcAtrPeriod = 10,
+  kcMultiplier = 1.5,
+): SqueezeResult {
+  const n = Math.min(closes.length, highs.length, lows.length, volumes.length);
+  const empty: SqueezeResult = {
+    bbBandwidth: NaN,
+    kcBandwidth: NaN,
+    isSqueezed: false,
+    squeezeDuration: 0,
+    bbSpike: false,
+    fired: false,
+    percentB: NaN,
+    momentumDirection: "flat",
+    bbUpper: NaN,
+    bbLower: NaN,
+    kcUpper: NaN,
+    kcLower: NaN,
+  };
+  if (n < 30) return empty;
+
+  const bb = bollingerBands(closes, bbPeriod, bbStdDev);
+  const kc = keltnerChannel(highs, lows, closes, kcEmaPeriod, kcAtrPeriod, kcMultiplier);
+
+  const last = n - 1;
+  const prev = Math.max(0, last - 1);
+
+  const bbBW = bb.bandwidth[last] ?? NaN;
+  const kcBW = kc.bandwidth[last] ?? NaN;
+  const pB = bb.percentB[last] ?? NaN;
+
+  // Sıkışma: BB üst < KC üst VE BB alt > KC alt
+  const wasSqueezed =
+    !isNaN(bb.upper[prev]) && !isNaN(kc.upper[prev]) &&
+    !isNaN(bb.lower[prev]) && !isNaN(kc.lower[prev]) &&
+    bb.upper[prev] <= kc.upper[prev] &&
+    bb.lower[prev] >= kc.lower[prev];
+
+  const isSqueezedNow =
+    !isNaN(bb.upper[last]) && !isNaN(kc.upper[last]) &&
+    !isNaN(bb.lower[last]) && !isNaN(kc.lower[last]) &&
+    bb.upper[last] <= kc.upper[last] &&
+    bb.lower[last] >= kc.lower[last];
+
+  // Squeeze süresi (geriye doğru say)
+  let squeezeDuration = 0;
+  if (isSqueezedNow) {
+    for (let i = last; i >= 0; i--) {
+      if (
+        !isNaN(bb.upper[i]) && !isNaN(kc.upper[i]) &&
+        !isNaN(bb.lower[i]) && !isNaN(kc.lower[i]) &&
+        bb.upper[i] <= kc.upper[i] &&
+        bb.lower[i] >= kc.lower[i]
+      ) {
+        squeezeDuration++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  // BB Spike: BandWidth son 125 barın min'inin %15 üstünde
+  const lookback = Math.min(125, n);
+  const bwSlice = bb.bandwidth.slice(last - lookback + 1, last + 1).filter((v) => Number.isFinite(v) && v > 0);
+  const minBW = bwSlice.length > 0 ? Math.min(...bwSlice) : NaN;
+  const bbSpike = Number.isFinite(bbBW) && Number.isFinite(minBW) && bbBW >= minBW * 1.15;
+
+  // Fired: dün sıkışmaydı, bugün değil (squeeze bitti)
+  const fired = wasSqueezed && !isSqueezedNow;
+
+  // Momentum yönü: MACD histogram benzeri — BB orta - KC orta farkı veya basit fiyat momentumu
+  let momentumDirection: "up" | "down" | "flat" = "flat";
+  if (n >= 5) {
+    const recentClose = closes[last];
+    const pastClose = closes[Math.max(0, last - 5)];
+    if (Number.isFinite(recentClose) && Number.isFinite(pastClose) && pastClose > 0) {
+      const change = ((recentClose - pastClose) / pastClose) * 100;
+      momentumDirection = change > 0.5 ? "up" : change < -0.5 ? "down" : "flat";
+    }
+  }
+
+  return {
+    bbBandwidth: bbBW,
+    kcBandwidth: kcBW,
+    isSqueezed: isSqueezedNow,
+    squeezeDuration,
+    bbSpike,
+    fired,
+    percentB: pB,
+    momentumDirection,
+    bbUpper: bb.upper[last] ?? NaN,
+    bbLower: bb.lower[last] ?? NaN,
+    kcUpper: kc.upper[last] ?? NaN,
+    kcLower: kc.lower[last] ?? NaN,
+  };
+}
+
 /* ─── ATR (Average True Range) ─── */
 export function atr(
   highs: number[],

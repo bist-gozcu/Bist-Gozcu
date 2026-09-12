@@ -397,6 +397,18 @@ export default function TreydScreen() {
                 kirilimAniSkoru={item.kirilimAniSkoru}
                 kirilimAniNedenleri={item.kirilimAniNedenleri}
                 kirilimSaptandi={item.kirilimSaptandi}
+                sikismaAktif={item.sikismaAktif}
+                sikismaSuresi={item.sikismaSuresi}
+                sikismaPatladi={item.sikismaPatladi}
+                sikismaSkoru={item.sikismaSkoru}
+                sikismaNedenleri={item.sikismaNedenleri}
+                oneriAlisSeviyesi={item.oneriAlisSeviyesi}
+                oneriHedefFiyat={item.oneriHedefFiyat}
+                oneriStopSeviyesi={item.oneriStopSeviyesi}
+                beklenenKarOrani={item.beklenenKarOrani}
+                riskOdulOrani={item.riskOdulOrani}
+                bbBandwidth={item.bbBandwidth}
+                momentumYonu={item.momentumYonu}
               />
             </View>
           </View>

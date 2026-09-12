@@ -44,6 +44,19 @@ interface DecisionCardProps {
   kirilimAniSkoru?: number;
   kirilimAniNedenleri?: string[];
   kirilimSaptandi?: boolean;
+  /* Sıkışma & Seviye Önerileri */
+  sikismaAktif?: boolean;
+  sikismaSuresi?: number;
+  sikismaPatladi?: boolean;
+  sikismaSkoru?: number;
+  sikismaNedenleri?: string[];
+  oneriAlisSeviyesi?: number;
+  oneriHedefFiyat?: number;
+  oneriStopSeviyesi?: number;
+  beklenenKarOrani?: number;
+  riskOdulOrani?: number;
+  bbBandwidth?: number;
+  momentumYonu?: "up" | "down" | "flat";
 }
 
 function SignalChip({
@@ -110,6 +123,18 @@ export default function DecisionCard({
   kirilimAniSkoru = 0,
   kirilimAniNedenleri = [],
   kirilimSaptandi = false,
+  sikismaAktif = false,
+  sikismaSuresi = 0,
+  sikismaPatladi = false,
+  sikismaSkoru = 0,
+  sikismaNedenleri = [],
+  oneriAlisSeviyesi,
+  oneriHedefFiyat,
+  oneriStopSeviyesi,
+  beklenenKarOrani,
+  riskOdulOrani,
+  bbBandwidth,
+  momentumYonu = "flat",
 }: DecisionCardProps) {
   const colors = useColors();
   const hasProximityBar =
@@ -159,12 +184,14 @@ export default function DecisionCard({
     durumEtiketi === "Teyitli"
       ? colors.up
       : durumEtiketi === "Kırılım"
-        ? colors.up            // Kırılım = yükseliş sinyali, yeşil
-        : durumEtiketi === "Erken"
-          ? colors.primary
-          : durumEtiketi === "Çekirge"
-            ? colors.neutral
-            : colors.mutedForeground;
+        ? colors.up
+        : durumEtiketi === "Sıkışma"
+          ? colors.neutral          // Sıkışma = dikkat, gri/turuncu
+          : durumEtiketi === "Erken"
+            ? colors.primary
+            : durumEtiketi === "Çekirge"
+              ? colors.neutral
+              : colors.mutedForeground;
 
   const dailyChange = Number.isFinite(gunlukDegisim)
     ? (gunlukDegisim as number)
@@ -247,6 +274,53 @@ export default function DecisionCard({
             >
               {kirilimAniNedenleri.slice(0, 2).join(" · ")}
             </Text>
+          )}
+        </View>
+      )}
+
+      {/* Sıkışma & Seviye Önerileri */}
+      {(sikismaAktif || sikismaPatladi) && sikismaSkoru > 0 && (
+        <View style={styles.sikismaSection}>
+          <Text style={[styles.sikismaLabel, { color: sikismaPatladi && momentumYonu === "up" ? colors.up : colors.neutral }]}>
+            {sikismaPatladi ? `Sıkışma Patladı ↑ ${sikismaSkoru}/100` : `Sıkışma ${sikismaSuresi} bar · ${sikismaSkoru}/100`}
+          </Text>
+          {sikismaNedenleri.length > 0 && (
+            <Text
+              style={[styles.cekirgeNeden, { color: colors.mutedForeground }]}
+              numberOfLines={2}
+            >
+              {sikismaNedenleri.slice(0, 3).join(" · ")}
+            </Text>
+          )}
+          {/* Alım / Hedef / Stop satırı */}
+          {Number.isFinite(oneriAlisSeviyesi) && Number.isFinite(oneriHedefFiyat) && Number.isFinite(oneriStopSeviyesi) && (
+            <View style={styles.seviyeRow}>
+              <View style={styles.seviyeCell}>
+                <Text style={[styles.seviyeLabel, { color: colors.mutedForeground }]}>Alım</Text>
+                <Text style={[styles.seviyeDeger, { color: colors.foreground }]}>₺{oneriAlisSeviyesi!.toFixed(2)}</Text>
+              </View>
+              <View style={[styles.seviyeCell, { borderLeftWidth: 1, borderLeftColor: `${colors.mutedForeground}30` }]}>
+                <Text style={[styles.seviyeLabel, { color: colors.mutedForeground }]}>Hedef</Text>
+                <Text style={[styles.seviyeDeger, { color: colors.up }]}>₺{oneriHedefFiyat!.toFixed(2)}</Text>
+              </View>
+              <View style={[styles.seviyeCell, { borderLeftWidth: 1, borderLeftColor: `${colors.mutedForeground}30` }]}>
+                <Text style={[styles.seviyeLabel, { color: colors.mutedForeground }]}>Stop</Text>
+                <Text style={[styles.seviyeDeger, { color: colors.down }]}>₺{oneriStopSeviyesi!.toFixed(2)}</Text>
+              </View>
+            </View>
+          )}
+          {/* Kar oranı ve risk/ödül */}
+          {Number.isFinite(beklenenKarOrani) && (
+            <View style={styles.karRow}>
+              <Text style={[styles.karLabel, { color: colors.up }]}>
+                Beklenen Kar: {beklenenKarOrani!.toFixed(1)}%
+              </Text>
+              {Number.isFinite(riskOdulOrani) && (
+                <Text style={[styles.karLabel, { color: colors.mutedForeground, marginLeft: 12 }]}>
+                  Risk/Ödül: 1:{riskOdulOrani!.toFixed(1)}
+                </Text>
+              )}
+            </View>
           )}
         </View>
       )}
@@ -377,6 +451,21 @@ const styles = StyleSheet.create({
   cekirgeRow: { gap: 2 },
   cekirgeLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   cekirgeNeden: { fontSize: 9, fontFamily: "Inter_400Regular" },
+  sikismaSection: { gap: 4, marginTop: 2 },
+  sikismaLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  seviyeRow: {
+    flexDirection: "row",
+    marginTop: 4,
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(128,128,128,0.2)",
+  },
+  seviyeCell: { flex: 1, alignItems: "center", paddingVertical: 6 },
+  seviyeLabel: { fontSize: 8, fontFamily: "Inter_400Regular" },
+  seviyeDeger: { fontSize: 11, fontFamily: "Inter_700Bold", marginTop: 1 },
+  karRow: { flexDirection: "row", marginTop: 3 },
+  karLabel: { fontSize: 9, fontFamily: "Inter_600SemiBold" },
   earlyReasons: { gap: 2 },
   earlyContext: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
   earlyReason: { fontSize: 9, lineHeight: 13, fontFamily: "Inter_400Regular" },

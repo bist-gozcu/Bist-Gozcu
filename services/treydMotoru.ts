@@ -6,6 +6,8 @@ import {
   analyzeDailySetup,
   analyzeOpeningBehavior,
   atr,
+  bollingerBands,
+  detectSqueeze,
   DailyTrendDirection,
   macd,
 } from "@/utils/indicators";
@@ -108,8 +110,35 @@ export type TreydSinyali = {
   kirilimAniNedenleri: string[];
   /** Kırılım anı saptandı mı (genelPuan ağırlıklandırmasını değiştirir). */
   kirilimSaptandi: boolean;
-  /** Kısa durum etiketi (Teyitli / İzlemede / Erken / Çekirge / Kırılım). */
+  /** Kısa durum etiketi (Teyitli / İzlemede / Erken / Çekirge / Kırılım / Sıkışma). */
   durumEtiketi: string;
+  /* ─── Sıkışma & Seviye Önerileri ─── */
+  /** Sıkışma tespit edildi mi (BB KC içinde). */
+  sikismaAktif: boolean;
+  /** Sıkışma süresi (bar sayısı). */
+  sikismaSuresi: number;
+  /** Sıkışma sonrası patlama (fired). */
+  sikismaPatladi: boolean;
+  /** Sıkışma skor (0-100). */
+  sikismaSkoru: number;
+  /** Sıkışma puanının nedenleri. */
+  sikismaNedenleri: string[];
+  /** Önerilen alım seviyesi (desteğe/alt bant yakınsa). */
+  oneriAlisSeviyesi: number;
+  /** Önerilen hedef fiyat (kar oranı ile). */
+  oneriHedefFiyat: number;
+  /** Önerilen stop-loss seviyesi. */
+  oneriStopSeviyesi: number;
+  /** Beklenen kar oranı (%) — (hedef -alış)/alis ×100. */
+  beklenenKarOrani: number;
+  /** Risk/ödül oranı (hedef-alış / alış-stop). */
+  riskOdulOrani: number;
+  /** BB BandWidth yüzdesi. */
+  bbBandwidth: number;
+  /** BB %B değeri. */
+  bbPercentB: number;
+  /** Momentum yönü (fired sonrası). */
+  momentumYonu: "up" | "down" | "flat";
 };
 
 type SectorSnapshot = {
@@ -248,6 +277,19 @@ const getQuoteCandidate = (
     kirilimSaptandi: false,
     genelPuan: 0,
     durumEtiketi: "İzlemede",
+    sikismaAktif: false,
+    sikismaSuresi: 0,
+    sikismaPatladi: false,
+    sikismaSkoru: 0,
+    sikismaNedenleri: ["Sıkışma tespiti için yeterli veri yok"],
+    oneriAlisSeviyesi: NaN,
+    oneriHedefFiyat: NaN,
+    oneriStopSeviyesi: NaN,
+    beklenenKarOrani: NaN,
+    riskOdulOrani: NaN,
+    bbBandwidth: NaN,
+    bbPercentB: NaN,
+    momentumYonu: "flat",
   };
 };
 
@@ -489,6 +531,194 @@ const calculateKirilimAni = (
     kirilimAniSkoru: clamp(score, 0, 100),
     kirilimAniNedenleri: reasons.length > 0 ? reasons : ["— Kırılım anı saptanmadı"],
     kirilimSaptandi: detected,
+  };
+};
+
+// ─── Sıkışma & Seviye Önerileri (Squeeze & Breakout) ───
+// TTM Squeeze: BB bantları KC içinde = sıkışma, dışına çıkınca = patlama
+// Alım/hedef/stop seviyeleri ATR bazlı hesaplanır
+type SikismaAnalysis = Pick<
+  TreydSinyali,
+  | "sikismaAktif"
+  | "sikismaSuresi"
+  | "sikismaPatladi"
+  | "sikismaSkoru"
+  | "sikismaNedenleri"
+  | "oneriAlisSeviyesi"
+  | "oneriHedefFiyat"
+  | "oneriStopSeviyesi"
+  | "beklenenKarOrani"
+  | "riskOdulOrani"
+  | "bbBandwidth"
+  | "bbPercentB"
+  | "momentumYonu"
+>;
+
+const SIKISMA_MIN_DURATION = 3; // en az 3 bar sıkışma
+const SIKISMA_FIRED_BONUS = 25; // patlama bonus puan
+
+const calculateSikisma = (
+  candidate: TreydSinyali,
+  chart: Awaited<ReturnType<typeof fetchChartData>>,
+  daily: ReturnType<typeof analyzeDailySetup>,
+  lastCompletedIdx: number,
+): SikismaAnalysis => {
+  const empty: SikismaAnalysis = {
+    sikismaAktif: false,
+    sikismaSuresi: 0,
+    sikismaPatladi: false,
+    sikismaSkoru: 0,
+    sikismaNedenleri: ["Sıkışma tespiti için yeterli veri yok"],
+    oneriAlisSeviyesi: NaN,
+    oneriHedefFiyat: NaN,
+    oneriStopSeviyesi: NaN,
+    beklenenKarOrani: NaN,
+    riskOdulOrani: NaN,
+    bbBandwidth: NaN,
+    bbPercentB: NaN,
+    momentumYonu: "flat",
+  };
+  if (!chart || lastCompletedIdx < 30) return empty;
+
+  // Squeeze tespiti
+  const sq = detectSqueeze(
+    chart.highs,
+    chart.lows,
+    chart.closes,
+    chart.volumes,
+  );
+
+  // ATR14 — stop/hedef hesabı için
+  const atr14 = atr(chart.highs, chart.lows, chart.closes, 14)[lastCompletedIdx];
+  const lastClose = chart.closes[lastCompletedIdx];
+
+  const reasons: string[] = [];
+  let score = 0;
+
+  // 1) Sıkışma aktif mi?
+  if (sq.isSqueezed) {
+    score += 20;
+    reasons.push(
+      `✓ Sıkışma aktif (${sq.squeezeDuration} bar) — BB KC içinde`,
+    );
+
+    // Sıkışma süresi bonusu
+    if (sq.squeezeDuration >= SIKISMA_MIN_DURATION) {
+      score += 10;
+      reasons.push(
+        `✓ Sıkışma süresi ${sq.squeezeDuration} bar (≥${SIKISMA_MIN_DURATION})`,
+      );
+    }
+
+    // BB Spike — gerçek sıkışma, tuzak değil
+    if (sq.bbSpike) {
+      score += 10;
+      reasons.push("✓ BB Spike — BandWidth 125-bar min'in %15 üstünde");
+    }
+  } else {
+    reasons.push("— Sıkışma yok — BB KC dışında");
+  }
+
+  // 2) Patlama (fired) — squeeze sonrası kırılım
+  if (sq.fired) {
+    score += SIKISMA_FIRED_BONUS;
+    reasons.push(
+      `✓ SIKIŞMA PATLADI — momentum ${sq.momentumDirection === "up" ? "yukarı ↑" : sq.momentumDirection === "down" ? "aşağı ↓" : "yatay →"}`,
+    );
+  }
+
+  // 3) Hacim teyidi — patlama anında hacim artışı olmalı
+  const blendedRVOL = Math.max(
+    Number.isFinite(daily.relativeVolume) ? daily.relativeVolume : 0,
+    Number.isFinite(candidate.goreceliHacim) ? candidate.goreceliHacim : 0,
+  );
+  if (sq.fired && blendedRVOL >= 1.5) {
+    score += 15;
+    reasons.push(`✓ Patlama hacim teyidi (RVOL ${blendedRVOL.toFixed(2)}x)`);
+  } else if (sq.fired && blendedRVOL >= 1.0) {
+    score += 5;
+    reasons.push(`≈ Hacim orta düzey (RVOL ${blendedRVOL.toFixed(2)}x)`);
+  }
+
+  // 4) Trend uyumu — günlük trend yukarıdaysa patlama daha güvenilir
+  if (sq.fired && daily.dailyTrend === "up") {
+    score += 10;
+    reasons.push("✓ Patlama yükseliş trendiyle uyumlu");
+  } else if (sq.fired && daily.dailyTrend === "sideways") {
+    score += 5;
+    reasons.push("≈ Patlama yatay trendte — dikkat");
+  }
+
+  // 5) Yapı teyidi (yüksek dip + yüksek tepe)
+  if (sq.fired && daily.structureConfirmed) {
+    score += 10;
+    reasons.push("✓ Yüksek dip + yüksek tepe yapısı mevcut");
+  }
+
+  // 6) RSI uygun mu?
+  if (sq.isSqueezed && daily.rsiFavorable) {
+    score += 5;
+    reasons.push(
+      `≈ RSI uygun bölge (${Number.isFinite(daily.rsiValue) ? daily.rsiValue.toFixed(0) : "?"})`,
+    );
+  }
+
+  // Skor sınırlandırma
+  score = clamp(Math.round(score), 0, 100);
+
+  // ─── Alım / Hedef / Stop seviyeleri ───
+  // Sadece sıkışma aktifken veya patlamada anlamlı
+  let oneriAlis = NaN;
+  let oneriHedef = NaN;
+  let oneriStop = NaN;
+  let beklenenKar = NaN;
+  let riskOdul = NaN;
+
+  if (
+    Number.isFinite(atr14) &&
+    atr14 > 0 &&
+    Number.isFinite(lastClose) &&
+    lastClose > 0
+  ) {
+    if (sq.isSqueezed) {
+      // Sıkışmada: alt banda yakınsa alım, ortalamaya hedef
+      oneriAlis = Math.min(lastClose, sq.bbLower);
+      oneriHedef = sq.bbUpper;
+      oneriStop = oneriAlis - 1.5 * atr14;
+    } else if (sq.fired && sq.momentumDirection === "up") {
+      // Patlamada (yukarı): son kapanışa yakın alım, +2×ATR hedef
+      oneriAlis = lastClose;
+      oneriHedef = lastClose + 2 * atr14;
+      oneriStop = lastClose - 1.5 * atr14;
+    }
+
+    // Kar oranı ve risk/ödül hesabı
+    if (Number.isFinite(oneriAlis) && oneriAlis > 0) {
+      beklenenKar = ((oneriHedef - oneriAlis) / oneriAlis) * 100;
+      const risk = oneriAlis - oneriStop;
+      const odul = oneriHedef - oneriAlis;
+      riskOdul = risk > 0 ? odul / risk : NaN;
+    }
+  }
+
+  if (reasons.length === 0) {
+    reasons.push("— Sıkışma koşulları karşılanmıyor");
+  }
+
+  return {
+    sikismaAktif: sq.isSqueezed,
+    sikismaSuresi: sq.squeezeDuration,
+    sikismaPatladi: sq.fired,
+    sikismaSkoru: score,
+    sikismaNedenleri: reasons,
+    oneriAlisSeviyesi: oneriAlis,
+    oneriHedefFiyat: oneriHedef,
+    oneriStopSeviyesi: oneriStop,
+    beklenenKarOrani: beklenenKar,
+    riskOdulOrani: riskOdul,
+    bbBandwidth: sq.bbBandwidth,
+    bbPercentB: sq.percentB,
+    momentumYonu: sq.momentumDirection,
   };
 };
 
@@ -994,6 +1224,7 @@ const confirmCandidate = async (
       intradayResistanceBreakout,
     );
     const cekirge = calculateCekirge(chart, daily, lastCompletedIdx);
+    const sikisma = calculateSikisma(candidate, chart, daily, lastCompletedIdx);
     const opening = analyzeOpeningBehavior(chart.opens, chart.closes, 50);
     const kararDestegi = buildDecisionSupport(
       candidate,
@@ -1006,24 +1237,27 @@ const confirmCandidate = async (
     );
 
     // ─── Birleşik genel puan (0-100) ───
-    // Kırılım anı saptandıysa: teyit %35 + erken hareket %40 + kırılım anı %25 (çekirge sıfırlanır)
-    // Kırılım yoksa:           teyit %45 + erken hareket %40 + çekirge %15
+    // Kırılım anı patladıysa:  teyit %40 + erken %35 + kırılım anı %15 + sıkışma %10
+    // Sıkışma aktifse:        teyit %40 + erken %35 + çekirge %15 + sıkışma %10
+    // Hiçbiri:                teyit %40 + erken %35 + çekirge %15 + sıkışma %10
     const teyitPuan = clamp((teyitSayisi / TOTAL_CONFIRMATIONS) * 100, 0, 100);
     const genelPuan = kirilimAni.kirilimSaptandi
       ? clamp(
           Math.round(
-            teyitPuan * 0.35 +
-            earlyMovement.erkenHareketSkoru * 0.40 +
-            kirilimAni.kirilimAniSkoru * 0.25,
+            teyitPuan * 0.40 +
+            earlyMovement.erkenHareketSkoru * 0.35 +
+            kirilimAni.kirilimAniSkoru * 0.15 +
+            sikisma.sikismaSkoru * 0.10,
           ),
           0,
           100,
         )
       : clamp(
           Math.round(
-            teyitPuan * 0.45 +
-            earlyMovement.erkenHareketSkoru * 0.40 +
-            cekirge.cekirgeSkoru * 0.15,
+            teyitPuan * 0.40 +
+            earlyMovement.erkenHareketSkoru * 0.35 +
+            cekirge.cekirgeSkoru * 0.15 +
+            sikisma.sikismaSkoru * 0.10,
           ),
           0,
           100,
@@ -1031,13 +1265,15 @@ const confirmCandidate = async (
     const durumEtiketi =
       kirilimAni.kirilimSaptandi && genelPuan >= 55
         ? "Kırılım"
-        : radarDurumu === "gunluk_teyitli"
-          ? "Teyitli"
-          : earlyMovement.erkenHareketSkoru >= 50
-            ? "Erken"
-            : cekirge.cekirgeUygun && cekirge.cekirgeSkoru >= CEKIRGE_MIN_SCORE
-              ? "Çekirge"
-              : "İzlemede";
+        : sikisma.sikismaAktif && sikisma.sikismaSkoru >= 40 && !sikisma.sikismaPatladi
+          ? "Sıkışma"
+          : radarDurumu === "gunluk_teyitli"
+            ? "Teyitli"
+            : earlyMovement.erkenHareketSkoru >= 50
+              ? "Erken"
+              : cekirge.cekirgeUygun && cekirge.cekirgeSkoru >= CEKIRGE_MIN_SCORE
+                ? "Çekirge"
+                : "İzlemede";
 
     return {
       ...candidate,
@@ -1066,6 +1302,7 @@ const confirmCandidate = async (
       teyitler,
       ...earlyMovement,
       ...cekirge,
+      ...sikisma,
       ...kirilimAni,
       kararDestegi,
       genelPuan,
@@ -1081,6 +1318,19 @@ const confirmCandidate = async (
       cekirgeNedenleri: ["Yatay yapı verisi alınamadı"],
       cekirgeRiski: "Tarihsel veri alınamadı; aday olarak değerlendirilmemeli.",
       cekirgeUygun: false,
+      sikismaAktif: false,
+      sikismaSuresi: 0,
+      sikismaPatladi: false,
+      sikismaSkoru: 0,
+      sikismaNedenleri: ["Sıkışma verisi alınamadı"],
+      oneriAlisSeviyesi: NaN,
+      oneriHedefFiyat: NaN,
+      oneriStopSeviyesi: NaN,
+      beklenenKarOrani: NaN,
+      riskOdulOrani: NaN,
+      bbBandwidth: NaN,
+      bbPercentB: NaN,
+      momentumYonu: "flat",
       kirilimAniSkoru: 0,
       kirilimAniNedenleri: ["— Kırılım anı verisi alınamadı"],
       kirilimSaptandi: false,
