@@ -53,6 +53,7 @@
     "zod": "^3.25.76"
   },
   "dependencies": {
+    "eas-cli": "^24.3.0",
     "expo-notifications": "~0.32.17",
     "expo-updates": "~29.0.20",
     "react-native-draggable-flatlist": "^4.0.3"
